@@ -150,10 +150,22 @@ código ou aceitar contribuições externas.
 
 ## Fontes e referências
 
-Esta skill foi escrita para este projeto. Para sua estrutura e implementação,
-foram consultadas estas referências técnicas:
+Estes dois papers são a fundamentação científica da DoneProof:
 
-- [OpenAI — Build skills](https://learn.chatgpt.com/docs/build-skills): como
-  criar e organizar skills para Codex.
-- [Documentação oficial da biblioteca padrão do Python](https://docs.python.org/3/library/):
-  base para o verificador, que usa apenas recursos nativos do Python.
+- [From Confident Closing to Silent Failure: Characterizing False Success in
+  LLM Agents](https://arxiv.org/abs/2606.09863) (2026), de Laksh Advani — a
+  base conceitual principal. O trabalho caracteriza o problema de *false
+  success*: o agente afirma que terminou, mas o estado real do sistema mostra
+  que a tarefa falhou. Ele também reforça que raciocinar ou pedir a opinião de
+  outro LLM não substitui uma verificação do resultado observado.
+- [Real-Time Detection and Repair of LLM Agent
+  Failures](https://arxiv.org/abs/2608.02464) (2026), de Sunny Dubey — o
+  reforço arquitetural. Ele inspira a direção de verificação determinística,
+  confirmação das ações necessárias e o ciclo de verificar, detectar falha,
+  reparar e verificar novamente.
+
+DoneProof **não é uma implementação direta** desses papers. Ela é uma
+**adaptação prática** dessas ideias para coding agents e Codex. Elementos como
+o contrato de sucesso, o bloqueio SHA-256, os gates de tarefa/feature/milestone
+e o estado `VERIFIED_SUCCESS` são a arquitetura criada neste projeto para uso
+em looping engineering.
