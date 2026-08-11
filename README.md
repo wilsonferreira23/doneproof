@@ -1,95 +1,120 @@
 # DoneProof
 
-**Completion is a state proved by evidence, not a conclusion produced by an agent.**
+DoneProof ajuda o Codex a não dizer “pronto” cedo demais.
 
-DoneProof is a lightweight Codex skill for preventing false success: an agent
-claiming a task is finished because it changed code, ran a command, or received
-a successful tool response. It requires a locked success contract and a
-deterministic verifier before a task can be reported as complete.
+Quando você pede uma mudança, não basta o agente escrever código ou um comando
+terminar sem erro. A tarefa só é considerada concluída quando existe uma prova
+executável de que o resultado pedido realmente aconteceu.
 
-## What it does
+## Em poucas palavras
 
-DoneProof turns a request into observable checks, locks those checks before
-implementation, and evaluates them through gates:
+Imagine que você pediu:
+
+> “Quem não estiver logado deve ser levado para `/login` ao abrir o painel.”
+
+Sem DoneProof, o agente pode criar um arquivo de autenticação e concluir que
+está tudo certo. Com DoneProof, ele precisa testar o comportamento de verdade:
 
 ```text
-plan → lock contract → implement → task gate → repair → feature gate → milestone gate
+abrir /dashboard sem estar logado
+↓
+receber redirecionamento para /login
+↓
+registrar a evidência
+↓
+só então dizer que terminou
 ```
 
-- A contract is hashed when locked, so failed criteria cannot be silently
-  weakened during a repair loop.
-- Checks can run commands, inspect files, or make HTTP requests.
-- Results are written to a local evidence ledger.
-- A successful write is not proof: state-changing work should be read back and
-  compared with the expected result.
+## Como funciona
 
-## Installation
+Antes de alterar o projeto, o Codex cria uma pequena lista chamada **contrato de
+sucesso**. Nela ficam as coisas que precisam ser verdade no final do trabalho.
 
-Copy this repository's `doneproof` directory to your Codex skills directory:
+Por exemplo:
+
+```text
+- a página redireciona quem não está logado
+- os testes de autenticação passam
+- o projeto continua compilando
+```
+
+Essa lista é bloqueada antes da implementação começar. Assim, se um teste
+falhar, o agente não pode simplesmente diminuir a exigência para conseguir
+marcar a tarefa como feita.
+
+Depois da alteração, o verificador roda as provas combinadas e devolve um
+resultado claro.
+
+| Resultado | Significado |
+| --- | --- |
+| `VERIFIED_SUCCESS` | Tudo que foi combinado passou. |
+| `VERIFIED_PARTIAL` | Parte passou, mas ainda falta algo. |
+| `FAILED` | O resultado observado é diferente do esperado. |
+| `BLOCKED` | Não foi possível testar por uma limitação externa. |
+
+Somente `VERIFIED_SUCCESS` permite dizer que o trabalho terminou.
+
+## Instalação
+
+Copie a pasta desta skill para o local onde o Codex guarda suas skills:
 
 ```text
 ~/.codex/skills/doneproof/
 ```
 
-Or install it for one project:
+Se quiser usar apenas em um projeto, coloque-a aqui:
 
 ```text
-<project>/.agents/skills/doneproof/
+<seu-projeto>/.agents/skills/doneproof/
 ```
 
-Optionally merge the guidance in [`AGENTS.example.md`](AGENTS.example.md) into
-your project's `AGENTS.md` to make the gates part of the engineering workflow.
+Você também pode copiar as orientações de
+[`AGENTS.example.md`](AGENTS.example.md) para o `AGENTS.md` do projeto. Isso
+faz o Codex lembrar de verificar cada etapa importante.
 
-## Quick start
+## Primeiro uso
 
-Before changing implementation files, create a success contract at
-`.proof-of-done/contract.json`. The included
-[`example contract`](examples/.proof-of-done/contract.json) demonstrates task,
-feature, and milestone gates.
+1. Antes de mudar o código, crie `.proof-of-done/contract.json`.
+2. Descreva nesse arquivo as provas que a tarefa precisa passar. Há um
+   [exemplo pronto](examples/.proof-of-done/contract.json).
+3. Bloqueie o contrato:
 
-Lock the contract:
+   ```bash
+   python3 .agents/skills/doneproof/scripts/pod.py lock .proof-of-done/contract.json
+   ```
 
-```bash
-python3 .agents/skills/doneproof/scripts/pod.py lock .proof-of-done/contract.json
-```
+4. Faça a alteração no projeto.
+5. Rode a verificação da etapa:
 
-After implementing the task, verify the relevant gate:
+   ```bash
+   python3 .agents/skills/doneproof/scripts/pod.py verify .proof-of-done/contract.json --gate task-auth-redirect
+   ```
 
-```bash
-python3 .agents/skills/doneproof/scripts/pod.py verify .proof-of-done/contract.json --gate task-auth-redirect
-```
+O resultado fica salvo em `.proof-of-done/ledger.json`. Ele é um registro
+local do que foi testado e do que aconteceu.
 
-The verifier writes its evidence to `.proof-of-done/ledger.json` and returns
-one of these states:
+## Que tipos de prova ele entende?
 
-| State | Meaning |
+DoneProof foi feito para ser simples e não exige bibliotecas extras. Ele tem
+três tipos de prova:
+
+| Tipo | Serve para |
 | --- | --- |
-| `VERIFIED_SUCCESS` | Every required check passed. |
-| `VERIFIED_PARTIAL` | Some checks passed, but the requested gate did not. |
-| `FAILED` | Observed behavior differs from the contract. |
-| `BLOCKED` | Verification could not run because of an external constraint. |
+| `command` | Rodar os testes, o build ou um comando que seu projeto já usa. |
+| `file` | Confirmar que um arquivo existe ou contém algo esperado. |
+| `http` | Abrir uma URL e conferir a resposta, como um redirecionamento. |
 
-Only `VERIFIED_SUCCESS` permits a completion claim.
+Para outras situações, use `command` para chamar a ferramenta que já existe no
+seu projeto. DoneProof não tenta substituir seu sistema de testes.
 
-## Supported checks
+## Um exemplo de prova
 
-The bundled verifier supports three intentionally small, dependency-free check
-types:
-
-| Type | Use it to |
-| --- | --- |
-| `command` | Run the project's existing tests, build, linter, migration checker, or scripts. |
-| `file` | Check that a file exists or contains the expected text. |
-| `http` | Exercise an endpoint and assert its status, headers, or response body. |
-
-For everything else, use `command` to call the tooling the project already
-uses. DoneProof does not need to replace your test runner.
-
-## Contract example
+Este trecho diz: “ao abrir o painel, a resposta deve ser um redirecionamento
+para a página de login”.
 
 ```json
 {
-  "id": "unauthenticated-redirect",
+  "id": "redireciona-sem-login",
   "type": "http",
   "url": "http://localhost:3000/dashboard",
   "expect_status": 302,
@@ -97,27 +122,38 @@ uses. DoneProof does not need to replace your test runner.
 }
 ```
 
-This is stronger than checking that a middleware file exists: it observes the
-behavior a user actually receives.
+Isso é melhor do que apenas conferir se existe um arquivo chamado
+`middleware`: ele testa o que a pessoa usando o sistema realmente vê.
 
-## Principles
+## Ideias principais
 
-- **No transitive trust:** another agent's summary is not evidence.
-- **Read after write:** verify persistent or external state after changing it.
-- **Repair, don't weaken:** preserve failure evidence and rerun the locked
-  contract after a fix.
-- **Use the smallest relevant gate:** do not run expensive unrelated checks.
+- **Não aceite “confia em mim”.** O resumo de outro agente não é uma prova.
+- **Depois de mudar algo, confira o resultado.** Criou um registro? Leia-o de
+  volta. Publicou uma página? Abra a página.
+- **Se falhar, conserte — não baixe a régua.** O contrato continua o mesmo até
+  a tarefa passar.
+- **Teste só o que importa.** Não é preciso rodar tudo a cada pequena mudança.
 
-## Repository layout
+## Organização do repositório
 
 ```text
-SKILL.md                         Codex instructions
-scripts/pod.py                   Deterministic verifier
-examples/.proof-of-done/         Sample contract
-AGENTS.example.md                Project-level workflow guidance
+SKILL.md                         Instruções que o Codex segue
+scripts/pod.py                   Programa que executa as provas
+examples/.proof-of-done/         Exemplo de contrato de sucesso
+AGENTS.example.md                Texto opcional para AGENTS.md
 ```
 
-## License
+## Licença
 
-No license has been selected for this project yet. Add one before distributing
-or accepting external contributions.
+Este projeto ainda não tem uma licença. Escolha uma antes de distribuir o
+código ou aceitar contribuições externas.
+
+## Fontes e referências
+
+Esta skill foi escrita para este projeto. Para sua estrutura e implementação,
+foram consultadas estas referências técnicas:
+
+- [OpenAI — Build skills](https://learn.chatgpt.com/docs/build-skills): como
+  criar e organizar skills para Codex.
+- [Documentação oficial da biblioteca padrão do Python](https://docs.python.org/3/library/):
+  base para o verificador, que usa apenas recursos nativos do Python.
