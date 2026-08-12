@@ -2,7 +2,7 @@
 
 Use `doneproof` for non-trivial implementation work.
 
-Default to `light`. Keep task contracts small (usually 2-4 checks).
+Choose the mode automatically: use `strict` for high-risk work, `standard` for feature/integration boundaries, and `light` otherwise. Keep task contracts small (usually 2-4 checks).
 
 Before implementation:
 1. create `.proof-of-done/contract.json`;

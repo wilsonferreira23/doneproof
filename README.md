@@ -50,13 +50,22 @@ After the change, DoneProof runs the agreed checks and returns a clear result:
 
 Only `VERIFIED_SUCCESS` allows a completion claim.
 
-## Keep the checks small
+## Automatic mode selection
 
-DoneProof is designed for long coding loops, so it keeps verification focused:
+You do not need to choose a mode. Codex chooses it before it locks the
+contract, based on the work it is about to do:
 
-- `light` mode is the default for normal tasks and allows up to 4 checks per gate.
-- `standard` mode is for feature or integration boundaries and allows up to 7 checks.
-- `strict` mode is for high-risk work such as authentication, permissions, money, migrations, or destructive operations and allows up to 12 checks.
+- `strict` for authentication, permissions, money, migrations, destructive
+  operations, and other high-risk work — up to 12 checks per gate.
+- `standard` for a feature boundary or meaningful integration — up to 7 checks.
+- `light` for everything else — up to 4 checks.
+
+If more than one rule applies, Codex chooses the higher-risk mode. It writes
+that concrete choice into the contract before locking it. The contract does
+not use an `auto` value: the verifier needs a fixed limit, while Codex is the
+part with enough context to classify the task.
+
+DoneProof is designed for long coding loops, so it keeps verification focused.
 
 For a normal task, 2–4 checks are usually enough: prove the requested behavior,
 read changed state back when relevant, and run the smallest useful regression
@@ -82,7 +91,8 @@ into your project’s `AGENTS.md`. That reminds Codex to verify important steps.
 
 ## First use
 
-1. Before changing code, create `.proof-of-done/contract.json`.
+1. Before changing code, Codex chooses the mode and creates
+   `.proof-of-done/contract.json`.
 2. Describe the checks the task needs to pass. There is a ready-made
    [example contract](examples/.proof-of-done/contract.json).
 3. Lock the contract:

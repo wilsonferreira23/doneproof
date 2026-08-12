@@ -7,15 +7,18 @@ description: Deterministic completion gate for coding agents and looping enginee
 
 The agent does not decide that work is done. Evidence does.
 
-## Choose the right amount of proof
+## Automatic mode selection
 
-Use the cheapest proof that directly verifies the requested outcome.
+Choose the verification mode yourself. Do not ask the user to select one.
 
-- `light`: default for small tasks; at most 4 checks per gate.
-- `standard`: feature boundaries or meaningful integration; at most 7 checks.
-- `strict`: auth, permissions, money, migrations, destructive operations, or other high-risk work; at most 12 checks.
+- Use `strict` for auth, permissions, money, migrations, destructive
+  operations, or other high-risk work; at most 12 checks per gate.
+- Use `standard` for a feature boundary or meaningful integration; at most 7.
+- Use `light` for everything else; at most 4.
 
-Do not choose a heavier mode just because it sounds safer.
+When more than one rule applies, choose the higher-risk mode. Write the chosen
+mode into the contract before locking it. Do not write `auto`: the verifier
+needs a concrete limit, while the agent is the part that understands the task.
 
 ## Before implementation
 
