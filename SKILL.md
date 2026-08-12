@@ -1,72 +1,71 @@
 ---
 name: doneproof
-description: Minimal deterministic completion gate for coding agents and looping engineering. Use before claiming implementation work is done. Requires a locked success contract, targeted verification, repair on failure, and real evidence instead of agent confidence.
+description: Deterministic completion gate for coding agents and looping engineering. Use before claiming implementation work is done. Requires a locked success contract, targeted verification, repair on failure, and real evidence instead of agent confidence.
 ---
 
-# DoneProof 2.1
+# DoneProof
 
 The agent does not decide that work is done. Evidence does.
 
-## Default mode: LIGHT
+## Choose the right amount of proof
 
 Use the cheapest proof that directly verifies the requested outcome.
 
-- `light`: default; small tasks; max 4 checks per gate.
-- `standard`: feature boundaries or meaningful integration; max 7 checks.
-- `strict`: auth, permissions, money, migrations, destructive operations, or other high-risk work; max 12 checks.
+- `light`: default for small tasks; at most 4 checks per gate.
+- `standard`: feature boundaries or meaningful integration; at most 7 checks.
+- `strict`: auth, permissions, money, migrations, destructive operations, or other high-risk work; at most 12 checks.
 
-Do not use `standard` or `strict` just because they sound safer.
+Do not choose a heavier mode just because it sounds safer.
 
-## Minimal Success Contract
+## Before implementation
 
-Before non-trivial implementation, create `.proof-of-done/contract.json` and lock it.
+For non-trivial work, create `.proof-of-done/contract.json` and lock it before
+changing implementation files.
 
-Usually use 2-4 checks for a task. The contract must prove:
+Use 2–4 checks for a normal task. Prove:
 
-1. the requested behavior/output actually works;
-2. if persistent/external state changed: read it back and compare;
+1. the requested behavior or output works;
+2. changed persistent or external state can be read back and compared;
 3. the smallest relevant regression check still passes.
 
-Prefer behavior, API/DB state, tests, and runtime evidence over file existence or source inspection.
+Prefer behavior, API/database state, tests, and runtime evidence over source
+inspection or file existence.
 
-Lock before implementation:
+Lock the contract:
 
     python3 <skill-dir>/scripts/pod.py lock .proof-of-done/contract.json
 
-Do not weaken or replace a locked contract because implementation failed.
+Do not weaken a locked contract because implementation failed.
 
-## Loop Protocol
+## Loop protocol
 
-For each task:
+    implement -> verify task gate -> PASS: continue
+                                 -> FAIL: repair -> verify again
 
-    implement -> verify targeted task gate -> PASS: continue
-                                      -> FAIL: repair -> verify same gate
+Verify the gate for the current task. A selected feature or milestone gate also
+rechecks its declared dependencies; use those gates only when closing that
+boundary, not on every task.
 
-Use only the gate for the current task. Do not run broad suites on every loop.
+After three reasonable repair attempts on the same gate without new evidence,
+stop thrashing and report the real failure or blocker.
 
-After the last task in a feature, run its feature gate.
-Run a milestone gate only at a real checkpoint.
+## Verification rules
 
-If the same gate fails after 3 reasonable repair attempts without materially new evidence, stop thrashing and report the failure/blocker.
-
-## Verification Rules
-
-- A successful write/tool call is not proof of final state.
-- Another agent's summary is not proof.
-- Reasoning is not proof.
-- Mutations require write -> read-back -> compare.
+- A successful write or tool call is not proof of final state.
+- Another agent's summary and reasoning are not proof.
+- Mutations require: write -> read back -> compare.
 - Bug fixes should reproduce the original failure when practical.
-- Do not paste large logs into context. Use the concise CLI result; inspect the ledger only when debugging.
-- Never advance the loop on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
+- Use the concise CLI result; inspect the ledger only when debugging.
+- Never advance on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
 
-Verify:
+Verify a gate:
 
     python3 <skill-dir>/scripts/pod.py verify .proof-of-done/contract.json --gate <gate-id>
 
-The verifier is fail-fast by default and stores detailed evidence in `.proof-of-done/ledger.json`.
+The verifier stops at the first failed check and writes detailed evidence to
+`.proof-of-done/ledger.json`.
 
 ## Completion
 
-Only `VERIFIED_SUCCESS` permits a completion claim.
-
-Otherwise report the real status and the smallest useful failure summary.
+Only `VERIFIED_SUCCESS` permits a completion claim. Otherwise report the real
+status and the smallest useful failure summary.

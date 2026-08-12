@@ -11,7 +11,7 @@ Before implementation:
 Loop:
 `implement -> targeted task gate -> repair if needed -> same gate -> next task`
 
-Run feature gates only when a feature closes and milestone gates only at checkpoints.
+Run feature gates only when a feature closes and milestone gates only at checkpoints. A selected feature or milestone gate rechecks its declared dependencies.
 Never advance on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
 Never accept an agent summary as evidence.
 Persistent/external mutations require read-back verification.

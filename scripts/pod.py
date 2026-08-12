@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-VERSION = "2.1.0"
+LEDGER_VERSION = 2
 STATE_DIR = Path(".proof-of-done")
 LOCK = STATE_DIR / "lock.json"
 LEDGER = STATE_DIR / "ledger.json"
@@ -42,47 +42,6 @@ def result(status, summary, evidence=None):
     return {"status": status, "summary": summary, "evidence": evidence if evidence is not None else summary}
 
 
-def validate_contract(contract):
-    mode = str(contract.get("mode", "light")).lower()
-    if mode not in MODE_LIMITS:
-        return f"unknown mode '{mode}'"
-    gates = contract.get("gates")
-    if not isinstance(gates, list) or not gates:
-        return "contract must contain at least one gate"
-    seen = set()
-    limit = MODE_LIMITS[mode]
-    valid_levels = {"task", "feature", "milestone"}
-    for gate in gates:
-        gate_id = gate.get("id")
-        if not gate_id:
-            return "every gate needs an id"
-        if gate_id in seen:
-            return f"duplicate gate id '{gate_id}'"
-        seen.add(gate_id)
-        if gate.get("level") not in valid_levels:
-            return f"gate '{gate_id}' has invalid level"
-        checks = gate.get("checks", [])
-        if not checks:
-            return f"gate '{gate_id}' has no checks"
-        if len(checks) > limit:
-            return f"gate '{gate_id}' has {len(checks)} checks; {mode} mode allows at most {limit}"
-        check_ids = set()
-        for check in checks:
-            check_id = check.get("id")
-            if not check_id:
-                return f"gate '{gate_id}' has a check without id"
-            if check_id in check_ids:
-                return f"gate '{gate_id}' has duplicate check id '{check_id}'"
-            check_ids.add(check_id)
-            if check.get("type") not in {"command", "file", "http"}:
-                return f"check '{check_id}' has unsupported type"
-    for gate in gates:
-        for dep in gate.get("depends_on", []):
-            if dep not in seen:
-                return f"gate '{gate['id']}' depends on unknown gate '{dep}'"
-    return None
-
-
 def lock_contract(path):
     contract = load(path)
     error = validate_contract(contract)
@@ -97,7 +56,7 @@ def lock_contract(path):
             return 2
         print(f"LOCKED {sha[:12]}")
         return 0
-    save(LOCK, {"version": VERSION, "contract": str(path), "sha256": sha, "locked_at": int(time.time())})
+    save(LOCK, {"version": LEDGER_VERSION, "contract": str(path), "sha256": sha, "locked_at": int(time.time())})
     print(f"LOCKED {sha[:12]}")
     return 0
 
@@ -177,6 +136,82 @@ def check_http(check):
 CHECKERS = {"command": check_command, "file": check_file, "http": check_http}
 
 
+def validate_contract(contract):
+    if not isinstance(contract, dict):
+        return "contract must be a JSON object"
+    mode = str(contract.get("mode", "light")).lower()
+    if mode not in MODE_LIMITS:
+        return f"unknown mode '{mode}'"
+    gates = contract.get("gates")
+    if not isinstance(gates, list) or not gates:
+        return "contract must contain at least one gate"
+    seen = set()
+    limit = MODE_LIMITS[mode]
+    valid_levels = {"task", "feature", "milestone"}
+    for gate in gates:
+        if not isinstance(gate, dict):
+            return "every gate must be an object"
+        gate_id = gate.get("id")
+        if not isinstance(gate_id, str) or not gate_id:
+            return "every gate needs an id"
+        if gate_id in seen:
+            return f"duplicate gate id '{gate_id}'"
+        seen.add(gate_id)
+        if gate.get("level") not in valid_levels:
+            return f"gate '{gate_id}' has invalid level"
+        checks = gate.get("checks")
+        if not isinstance(checks, list) or not checks:
+            return f"gate '{gate_id}' has no checks"
+        if len(checks) > limit:
+            return f"gate '{gate_id}' has {len(checks)} checks; {mode} mode allows at most {limit}"
+        check_ids = set()
+        for check in checks:
+            if not isinstance(check, dict):
+                return f"gate '{gate_id}' has an invalid check"
+            check_id = check.get("id")
+            if not isinstance(check_id, str) or not check_id:
+                return f"gate '{gate_id}' has a check without id"
+            if check_id in check_ids:
+                return f"gate '{gate_id}' has duplicate check id '{check_id}'"
+            check_ids.add(check_id)
+            check_type = check.get("type")
+            if not isinstance(check_type, str) or check_type not in CHECKERS:
+                return f"check '{check_id}' has unsupported type"
+            if check_type == "command":
+                if not isinstance(check.get("argv"), list) or not check["argv"] or not all(isinstance(arg, str) and arg for arg in check["argv"]):
+                    return f"command check '{check_id}' needs a non-empty argv"
+                if "cwd" in check and not isinstance(check["cwd"], str):
+                    return f"command check '{check_id}' cwd must be text"
+                if "stdout_contains" in check and not isinstance(check["stdout_contains"], str):
+                    return f"command check '{check_id}' stdout_contains must be text"
+            if check_type == "file":
+                if not isinstance(check.get("path"), str) or not check["path"]:
+                    return f"file check '{check_id}' needs a path"
+                if "contains" in check and not isinstance(check["contains"], str):
+                    return f"file check '{check_id}' contains must be text"
+            if check_type == "http":
+                if not isinstance(check.get("url"), str) or not check["url"]:
+                    return f"http check '{check_id}' needs a url"
+                if "method" in check and not isinstance(check["method"], str):
+                    return f"http check '{check_id}' method must be text"
+                if "headers" in check and not isinstance(check["headers"], dict):
+                    return f"http check '{check_id}' headers must be an object"
+                if "expect_headers" in check and not isinstance(check["expect_headers"], dict):
+                    return f"http check '{check_id}' expect_headers must be an object"
+                if "body" in check and not isinstance(check["body"], str):
+                    return f"http check '{check_id}' body must be text"
+                if "response_contains" in check and not isinstance(check["response_contains"], str):
+                    return f"http check '{check_id}' response_contains must be text"
+    for gate in gates:
+        dependencies = gate.get("depends_on", [])
+        if not isinstance(dependencies, list):
+            return f"gate '{gate['id']}' depends_on must be a list"
+        for dep in dependencies:
+            if not isinstance(dep, str) or dep not in seen:
+                return f"gate '{gate['id']}' depends on unknown gate '{dep}'"
+    return None
+
+
 def verify(path, target):
     contract = load(path)
     error = validate_contract(contract)
@@ -184,7 +219,7 @@ def verify(path, target):
         print(f"BLOCKED: {error}")
         return 2
     if not target:
-        print("BLOCKED: --gate is required in DoneProof 2.1 to avoid broad verification")
+        print("BLOCKED: --gate is required to avoid broad verification")
         return 2
     if not LOCK.exists():
         print("BLOCKED: success contract is not locked")
@@ -240,7 +275,7 @@ def verify(path, target):
         overall, exit_code = ("VERIFIED_PARTIAL" if passed else "FAILED"), 1
     else:
         overall, exit_code = ("VERIFIED_PARTIAL" if passed else "BLOCKED"), 2
-    ledger = {"version": VERSION, "mode": contract.get("mode", "light"), "contract_sha256": digest(contract), "verified_at": int(time.time()), "target": target, "status": overall, "gates": list(memo.values())}
+    ledger = {"version": LEDGER_VERSION, "mode": contract.get("mode", "light"), "contract_sha256": digest(contract), "verified_at": int(time.time()), "target": target, "status": overall, "gates": list(memo.values())}
     save(LEDGER, ledger)
     print(f"{overall} gate={target}")
     for gate in memo.values():
@@ -253,7 +288,7 @@ def verify(path, target):
 
 def main():
     parser = argparse.ArgumentParser(description="DoneProof deterministic verifier")
-    parser.add_argument("--version", action="version", version=f"DoneProof {VERSION}")
+    parser.add_argument("--version", action="version", version="DoneProof")
     sub = parser.add_subparsers(dest="command", required=True)
     lock_parser = sub.add_parser("lock")
     lock_parser.add_argument("contract")
