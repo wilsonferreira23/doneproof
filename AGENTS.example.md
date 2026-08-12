@@ -1,20 +1,18 @@
-## Completion gates
+## DoneProof
 
-Use the `doneproof` skill for implementation work.
+Use `doneproof` for non-trivial implementation work.
 
-Before implementation, create and lock the Success Contract.
+Default to `light`. Keep task contracts small (usually 2-4 checks).
 
-No task, feature, or milestone may be considered complete unless its applicable
-DoneProof gate returns VERIFIED_SUCCESS.
+Before implementation:
+1. create `.proof-of-done/contract.json`;
+2. lock it.
 
-Never trust another agent's success summary as verification.
+Loop:
+`implement -> targeted task gate -> repair if needed -> same gate -> next task`
 
-For looping work:
-
-task → task gate → repair until pass → next task
-
-feature complete → feature gate → repair until pass → checkpoint
-
-milestone complete → milestone gate → repair until pass → next milestone
-
-Do not advance the loop on FAILED, BLOCKED, or VERIFIED_PARTIAL.
+Run feature gates only when a feature closes and milestone gates only at checkpoints.
+Never advance on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
+Never accept an agent summary as evidence.
+Persistent/external mutations require read-back verification.
+After 3 reasonable failed repairs on the same gate without new evidence, stop thrashing and report the blocker.

@@ -1,171 +1,159 @@
-# DoneProof
+# DoneProof 2.1
 
-DoneProof ajuda o Codex a não dizer “pronto” cedo demais.
+DoneProof is a minimal deterministic completion gate for coding agents.
+Its goal is simple: an agent may only say a task is done after observable
+checks prove the requested outcome.
 
-Quando você pede uma mudança, não basta o agente escrever código ou um comando
-terminar sem erro. A tarefa só é considerada concluída quando existe uma prova
-executável de que o resultado pedido realmente aconteceu.
+Version 2.1 is optimized for looping engineering and lighter coding models:
+less prompt text, fewer checks, targeted gates, fail-fast execution, and concise
+CLI output.
 
-## Em poucas palavras
+## Why 2.1
 
-Imagine que você pediu:
-
-> “Quem não estiver logado deve ser levado para `/login` ao abrir o painel.”
-
-Sem DoneProof, o agente pode criar um arquivo de autenticação e concluir que
-está tudo certo. Com DoneProof, ele precisa testar o comportamento de verdade:
-
-```text
-abrir /dashboard sem estar logado
-↓
-receber redirecionamento para /login
-↓
-registrar a evidência
-↓
-só então dizer que terminou
-```
-
-## Como funciona
-
-Antes de alterar o projeto, o Codex cria uma pequena lista chamada **contrato de
-sucesso**. Nela ficam as coisas que precisam ser verdade no final do trabalho.
-
-Por exemplo:
+Long coding loops fail badly when an agent says `done` too early and the next
+steps build on that false assumption. DoneProof turns completion into an
+external gate:
 
 ```text
-- a página redireciona quem não está logado
-- os testes de autenticação passam
-- o projeto continua compilando
+implement -> verify -> PASS -> continue
+                  \-> FAIL -> repair -> verify again
 ```
 
-Essa lista é bloqueada antes da implementação começar. Assim, se um teste
-falhar, o agente não pode simplesmente diminuir a exigência para conseguir
-marcar a tarefa como feita.
+## Design goals
 
-Depois da alteração, o verificador roda as provas combinadas e devolve um
-resultado claro.
+- **Low token overhead**: `SKILL.md` is intentionally short.
+- **Deterministic evidence**: the verifier, not agent prose, owns the result.
+- **Targeted verification**: `--gate` is required; broad verification is not the default.
+- **Fail fast**: stop at the first failed check in a gate.
+- **Small contracts**: LIGHT mode allows at most 4 checks per gate.
+- **No success-criteria drift**: contracts are locked with SHA-256 before implementation.
+- **No transitive trust**: another agent saying “tests passed” is not evidence.
 
-| Resultado | Significado |
-| --- | --- |
-| `VERIFIED_SUCCESS` | Tudo que foi combinado passou. |
-| `VERIFIED_PARTIAL` | Parte passou, mas ainda falta algo. |
-| `FAILED` | O resultado observado é diferente do esperado. |
-| `BLOCKED` | Não foi possível testar por uma limitação externa. |
+## Modes
 
-Somente `VERIFIED_SUCCESS` permite dizer que o trabalho terminou.
+| Mode | Use | Max checks/gate |
+| --- | --- | ---: |
+| `light` | Default for normal tasks | 4 |
+| `standard` | Feature/integration boundary | 7 |
+| `strict` | Auth, permissions, money, migrations, destructive/high-risk work | 12 |
 
-## Instalação
+Do not choose a heavier mode merely because it sounds safer. Verification cost
+should be proportional to failure risk.
 
-Copie a pasta desta skill para o local onde o Codex guarda suas skills:
+## Minimal success contract
 
-```text
-~/.codex/skills/doneproof/
-```
+For a normal task, usually 2–4 checks are enough:
 
-Se quiser usar apenas em um projeto, coloque-a aqui:
+1. prove the requested behavior/output;
+2. if state changed, read it back and compare;
+3. run the smallest relevant regression check.
 
-```text
-<seu-projeto>/.agents/skills/doneproof/
-```
-
-Você também pode copiar as orientações de
-[`AGENTS.example.md`](AGENTS.example.md) para o `AGENTS.md` do projeto. Isso
-faz o Codex lembrar de verificar cada etapa importante.
-
-## Primeiro uso
-
-1. Antes de mudar o código, crie `.proof-of-done/contract.json`.
-2. Descreva nesse arquivo as provas que a tarefa precisa passar. Há um
-   [exemplo pronto](examples/.proof-of-done/contract.json).
-3. Bloqueie o contrato:
-
-   ```bash
-   python3 .agents/skills/doneproof/scripts/pod.py lock .proof-of-done/contract.json
-   ```
-
-4. Faça a alteração no projeto.
-5. Rode a verificação da etapa:
-
-   ```bash
-   python3 .agents/skills/doneproof/scripts/pod.py verify .proof-of-done/contract.json --gate task-auth-redirect
-   ```
-
-O resultado fica salvo em `.proof-of-done/ledger.json`. Ele é um registro
-local do que foi testado e do que aconteceu.
-
-## Que tipos de prova ele entende?
-
-DoneProof foi feito para ser simples e não exige bibliotecas extras. Ele tem
-três tipos de prova:
-
-| Tipo | Serve para |
-| --- | --- |
-| `command` | Rodar os testes, o build ou um comando que seu projeto já usa. |
-| `file` | Confirmar que um arquivo existe ou contém algo esperado. |
-| `http` | Abrir uma URL e conferir a resposta, como um redirecionamento. |
-
-Para outras situações, use `command` para chamar a ferramenta que já existe no
-seu projeto. DoneProof não tenta substituir seu sistema de testes.
-
-## Um exemplo de prova
-
-Este trecho diz: “ao abrir o painel, a resposta deve ser um redirecionamento
-para a página de login”.
+Example:
 
 ```json
 {
-  "id": "redireciona-sem-login",
-  "type": "http",
-  "url": "http://localhost:3000/dashboard",
-  "expect_status": 302,
-  "expect_headers": { "location": "/login" }
+  "version": "2.1",
+  "mode": "light",
+  "gates": [
+    {
+      "id": "task-auth-redirect",
+      "level": "task",
+      "checks": [
+        {
+          "id": "auth-test",
+          "type": "command",
+          "argv": ["npm", "test", "--", "auth"]
+        },
+        {
+          "id": "redirect-behavior",
+          "type": "http",
+          "url": "http://localhost:3000/dashboard",
+          "expect_status": 302,
+          "expect_headers": {"location": "/login"}
+        }
+      ]
+    }
+  ]
 }
 ```
 
-Isso é melhor do que apenas conferir se existe um arquivo chamado
-`middleware`: ele testa o que a pessoa usando o sistema realmente vê.
+## Install
 
-## Ideias principais
-
-- **Não aceite “confia em mim”.** O resumo de outro agente não é uma prova.
-- **Depois de mudar algo, confira o resultado.** Criou um registro? Leia-o de
-  volta. Publicou uma página? Abra a página.
-- **Se falhar, conserte — não baixe a régua.** O contrato continua o mesmo até
-  a tarefa passar.
-- **Teste só o que importa.** Não é preciso rodar tudo a cada pequena mudança.
-
-## Organização do repositório
+Project-local skill:
 
 ```text
-SKILL.md                         Instruções que o Codex segue
-scripts/pod.py                   Programa que executa as provas
-examples/.proof-of-done/         Exemplo de contrato de sucesso
-AGENTS.example.md                Texto opcional para AGENTS.md
+<project>/.agents/skills/doneproof/
 ```
 
-## Licença
+Or copy it into your global Codex skills location.
 
-Este projeto ainda não tem uma licença. Escolha uma antes de distribuir o
-código ou aceitar contribuições externas.
+Optionally merge `AGENTS.example.md` into your project `AGENTS.md` so the loop
+always respects DoneProof gates.
 
-## Fontes e referências
+## Usage
 
-Estes dois papers são a fundamentação científica da DoneProof:
+Create `.proof-of-done/contract.json`, then lock it before implementation:
 
-- [From Confident Closing to Silent Failure: Characterizing False Success in
-  LLM Agents](https://arxiv.org/abs/2606.09863) (2026), de Laksh Advani — a
-  base conceitual principal. O trabalho caracteriza o problema de *false
-  success*: o agente afirma que terminou, mas o estado real do sistema mostra
-  que a tarefa falhou. Ele também reforça que raciocinar ou pedir a opinião de
-  outro LLM não substitui uma verificação do resultado observado.
-- [Real-Time Detection and Repair of LLM Agent
-  Failures](https://arxiv.org/abs/2608.02464) (2026), de Sunny Dubey — o
-  reforço arquitetural. Ele inspira a direção de verificação determinística,
-  confirmação das ações necessárias e o ciclo de verificar, detectar falha,
-  reparar e verificar novamente.
+```bash
+python3 .agents/skills/doneproof/scripts/pod.py lock .proof-of-done/contract.json
+```
 
-DoneProof **não é uma implementação direta** desses papers. Ela é uma
-**adaptação prática** dessas ideias para coding agents e Codex. Elementos como
-o contrato de sucesso, o bloqueio SHA-256, os gates de tarefa/feature/milestone
-e o estado `VERIFIED_SUCCESS` são a arquitetura criada neste projeto para uso
-em looping engineering.
+Verify only the current gate:
+
+```bash
+python3 .agents/skills/doneproof/scripts/pod.py verify .proof-of-done/contract.json --gate task-auth-redirect
+```
+
+Possible results:
+
+- `VERIFIED_SUCCESS`
+- `VERIFIED_PARTIAL`
+- `FAILED`
+- `BLOCKED`
+
+Only `VERIFIED_SUCCESS` permits a completion claim.
+
+Detailed evidence is stored in:
+
+```text
+.proof-of-done/ledger.json
+```
+
+The CLI intentionally prints only a concise summary so large logs do not flood
+the model context.
+
+## Supported checks
+
+DoneProof deliberately stays small:
+
+- `command`
+- `file`
+- `http`
+
+Use `command` to call the project's existing tooling: Playwright, Vitest,
+pytest, TypeScript, builds, migrations, database probes, Docker, mobile tests,
+or custom scripts. DoneProof is a gate, not a replacement test framework.
+
+## Loop policy
+
+```text
+task -> task gate -> repair until pass -> next task
+feature complete -> feature gate -> checkpoint
+milestone complete -> milestone gate -> next milestone
+```
+
+If the same gate fails after 3 reasonable repair attempts without materially
+new evidence, stop thrashing and report the blocker instead of burning tokens.
+
+## Research foundations
+
+DoneProof is inspired by two 2026 papers:
+
+- **From Confident Closing to Silent Failure: Characterizing False Success in LLM Agents**  
+  https://arxiv.org/abs/2606.09863
+- **Real-Time Detection and Repair of LLM Agent Failures**  
+  https://arxiv.org/abs/2608.02464
+
+DoneProof is not a direct implementation of either paper. The locked success
+contract, task/feature/milestone gates, fail-fast verifier, and looping policy
+are an engineering adaptation for coding agents.

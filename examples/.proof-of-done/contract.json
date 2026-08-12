@@ -1,79 +1,36 @@
 {
-  "version": 2,
+  "version": "2.1",
+  "mode": "light",
   "gates": [
     {
       "id": "task-auth-redirect",
       "level": "task",
       "checks": [
         {
-          "id": "task-test",
+          "id": "auth-test",
           "type": "command",
-          "argv": [
-            "npm",
-            "test",
-            "--",
-            "auth"
-          ],
+          "argv": ["npm", "test", "--", "auth"],
           "expect_exit": 0
+        },
+        {
+          "id": "redirect-behavior",
+          "type": "http",
+          "url": "http://localhost:3000/dashboard",
+          "expect_status": 302,
+          "expect_headers": {"location": "/login"}
         }
       ]
     },
     {
       "id": "feature-auth",
       "level": "feature",
-      "depends_on": [
-        "task-auth-redirect"
-      ],
+      "depends_on": ["task-auth-redirect"],
       "checks": [
-        {
-          "id": "unauthenticated-redirect",
-          "type": "http",
-          "url": "http://localhost:3000/dashboard",
-          "expect_status": 302,
-          "expect_headers": {
-            "location": "/login"
-          }
-        },
         {
           "id": "typecheck",
           "type": "command",
-          "argv": [
-            "npm",
-            "run",
-            "typecheck"
-          ],
+          "argv": ["npm", "run", "typecheck"],
           "expect_exit": 0
-        }
-      ]
-    },
-    {
-      "id": "milestone-app",
-      "level": "milestone",
-      "depends_on": [
-        "feature-auth"
-      ],
-      "checks": [
-        {
-          "id": "e2e",
-          "type": "command",
-          "argv": [
-            "npm",
-            "run",
-            "test:e2e"
-          ],
-          "expect_exit": 0,
-          "timeout": 300
-        },
-        {
-          "id": "build",
-          "type": "command",
-          "argv": [
-            "npm",
-            "run",
-            "build"
-          ],
-          "expect_exit": 0,
-          "timeout": 300
         }
       ]
     }
