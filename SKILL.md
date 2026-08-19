@@ -1,74 +1,90 @@
 ---
 name: doneproof
-description: Deterministic completion gate for coding agents and looping engineering. Use before claiming implementation work is done. Requires a locked success contract, targeted verification, repair on failure, and real evidence instead of agent confidence.
+description: Deterministic completion and plan-coverage gate for coding agents and looping engineering. Use before claiming implementation work is done, especially for long plans. Requires locked criteria, targeted verification, repair on failure, and 100% mapped plan coverage before final success.
 ---
 
-# DoneProof
+# DoneProof 2.2
 
-The agent does not decide that work is done. Evidence does.
+Evidence decides when work is done.
 
-## Automatic mode selection
+## Modes
 
-Choose the verification mode yourself. Do not ask the user to select one.
+Choose automatically:
+- `strict`: auth, permissions, money, migrations, destructive/high-risk work; max 12 checks/gate.
+- `standard`: feature/integration boundary; max 7.
+- `light`: everything else; max 4.
 
-- Use `strict` for auth, permissions, money, migrations, destructive
-  operations, or other high-risk work; at most 12 checks per gate.
-- Use `standard` for a feature boundary or meaningful integration; at most 7.
-- Use `light` for everything else; at most 4.
-
-When more than one rule applies, choose the higher-risk mode. Write the chosen
-mode into the contract before locking it. Do not write `auto`: the verifier
-needs a concrete limit, while the agent is the part that understands the task.
+Normal tasks should still use only 2-4 useful checks.
 
 ## Before implementation
 
-For non-trivial work, create `.proof-of-done/contract.json` and lock it before
-changing implementation files.
+For non-trivial work, create `.proof-of-done/contract.json` and lock it.
 
-Use 2–4 checks for a normal task. Prove:
+For a large plan or multi-feature loop:
+1. save the original user plan unchanged to `.proof-of-done/plan.md`;
+2. add `plan_path`, `requirements`, and `final_gate` to the contract;
+3. give each required outcome a stable ID (`R1`, `R2`, ...);
+4. map every requirement to the gate that proves it.
 
-1. the requested behavior or output works;
-2. changed persistent or external state can be read back and compared;
-3. the smallest relevant regression check still passes.
+Keep requirement text short. The matrix is for coverage, not documentation.
 
-Prefer behavior, API/database state, tests, and runtime evidence over source
-inspection or file existence.
-
-Lock the contract:
+Lock:
 
     python3 <skill-dir>/scripts/pod.py lock .proof-of-done/contract.json
 
-Do not weaken a locked contract because implementation failed.
+Do not weaken locked criteria after failure.
 
-## Loop protocol
+If the final audit discovers a requirement that was genuinely omitted from the contract, only ADD it (and any new gate) then run:
 
-    implement -> verify task gate -> PASS: continue
-                                 -> FAIL: repair -> verify again
+    python3 <skill-dir>/scripts/pod.py extend .proof-of-done/contract.json
 
-Verify the gate for the current task. A selected feature or milestone gate also
-rechecks its declared dependencies; use those gates only when closing that
-boundary, not on every task.
+`extend` rejects edits/removals of existing requirements or gates.
 
-After three reasonable repair attempts on the same gate without new evidence,
-stop thrashing and report the real failure or blocker.
+## Loop
 
-## Verification rules
+    implement -> targeted task gate -> FAIL: repair -> same gate
+                                    -> PASS: next task
 
-- A successful write or tool call is not proof of final state.
-- Another agent's summary and reasoning are not proof.
-- Mutations require: write -> read back -> compare.
-- Bug fixes should reproduce the original failure when practical.
-- Use the concise CLI result; inspect the ledger only when debugging.
-- Never advance on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
-
-Verify a gate:
+Verify:
 
     python3 <skill-dir>/scripts/pod.py verify .proof-of-done/contract.json --gate <gate-id>
 
-The verifier stops at the first failed check and writes detailed evidence to
-`.proof-of-done/ledger.json`.
+Use feature gates only when a feature closes and milestone gates at real checkpoints.
+After 3 reasonable repairs on the same gate without materially new evidence, stop thrashing and report the blocker.
+
+## Verification rules
+
+- Tool success, agent reasoning, and another agent's summary are not proof.
+- Mutations require write -> read back -> compare.
+- Prefer observable behavior/state over source inspection.
+- Never advance on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
+- Use concise CLI output; inspect ledger only to debug.
+
+## Plan Coverage Loop
+
+For large plans, after implementation:
+
+1. run the final integration/module gate;
+2. run deterministic coverage:
+
+       python3 <skill-dir>/scripts/pod.py coverage .proof-of-done/contract.json
+
+3. read `.proof-of-done/plan.md` and `.proof-of-done/coverage.json` once;
+4. assume something may be missing and compare the original plan against:
+   - requirement IDs,
+   - implemented behavior,
+   - verification evidence;
+5. if something is missing/partial: add the omitted requirement/gate with `extend`, implement it, verify it, rerun the final gate, then rerun coverage;
+6. stop only when no semantic gap is found and coverage returns `VERIFIED_SUCCESS coverage=100%`.
+
+Do not repeat the semantic audit when nothing new changed.
 
 ## Completion
 
-Only `VERIFIED_SUCCESS` permits a completion claim. Otherwise report the real
-status and the smallest useful failure summary.
+For normal tasks, the applicable gate must return `VERIFIED_SUCCESS`.
+
+For a large plan, BOTH are required:
+- final gate: `VERIFIED_SUCCESS`;
+- coverage: `VERIFIED_SUCCESS coverage=100%`.
+
+100% coverage means every explicitly extracted requirement has executable proof. It is strong evidence, not mathematical certainty.

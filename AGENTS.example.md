@@ -2,17 +2,24 @@
 
 Use `doneproof` for non-trivial implementation work.
 
-Choose the mode automatically: use `strict` for high-risk work, `standard` for feature/integration boundaries, and `light` otherwise. Keep task contracts small (usually 2-4 checks).
+Choose mode automatically: `strict` for high-risk work, `standard` for feature/integration boundaries, `light` otherwise. Keep task gates small.
 
-Before implementation:
-1. create `.proof-of-done/contract.json`;
-2. lock it.
+For large plans:
+1. preserve the original plan in `.proof-of-done/plan.md`;
+2. map every required outcome to a stable requirement ID and proof gate;
+3. lock before implementation.
 
 Loop:
-`implement -> targeted task gate -> repair if needed -> same gate -> next task`
+`implement -> targeted gate -> repair -> same gate -> next task`
 
-Run feature gates only when a feature closes and milestone gates only at checkpoints. A selected feature or milestone gate rechecks its declared dependencies.
 Never advance on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
-Never accept an agent summary as evidence.
-Persistent/external mutations require read-back verification.
-After 3 reasonable failed repairs on the same gate without new evidence, stop thrashing and report the blocker.
+Mutations require read-back verification.
+After 3 failed repairs without new evidence, stop thrashing.
+
+Before declaring a large plan complete:
+1. run its final gate;
+2. run `pod.py coverage`;
+3. do one semantic audit comparing the original plan to the coverage matrix;
+4. if a missing requirement is found, append it with `pod.py extend`, implement/verify it, rerun the final gate and coverage.
+
+Completion requires final-gate `VERIFIED_SUCCESS` and `coverage=100%`.
