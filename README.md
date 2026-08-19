@@ -1,189 +1,214 @@
-# DoneProof
+# DoneProof 2.2
 
-DoneProof helps a coding agent avoid saying “done” too early.
+DoneProof is a lightweight deterministic completion gate for coding agents.
 
-Writing code or receiving a successful tool response does not prove that the
-requested result exists. DoneProof requires an executable check of that result
-before the agent can call the work complete.
+It addresses two different failure modes:
 
-## In a few words
+1. **False success** — the agent says work is done without proving the behavior.
+2. **Plan omission** — a long implementation loop finishes while parts of the original plan were never implemented or verified.
 
-Imagine the request is:
+DoneProof 2.2 keeps the low-token 2.1 verifier and adds **Plan Coverage**.
 
-> “Anyone who is not signed in must be sent to `/login` when opening the dashboard.”
-
-Without DoneProof, an agent can create an authentication file and assume the
-job is finished. With DoneProof, it has to verify the real behavior:
+## Core loop
 
 ```text
-open /dashboard while signed out
-↓
-receive a redirect to /login
-↓
-save the evidence
-↓
-only then say the task is done
+original plan
+  ↓
+requirements R1..Rn
+  ↓
+implement → targeted gate → repair if needed
+  ↓
+final integration gate
+  ↓
+coverage
+  ↓
+one semantic audit against the original plan
+  ↓
+missing item? → extend → implement → verify → final gate → coverage
+  ↓
+VERIFIED_SUCCESS coverage=100%
 ```
 
-## How it works
+`coverage=100%` means every extracted requirement has executable PASS evidence and
+the final integration gate was run after the latest requirement proof. It is
+strong evidence, not mathematical certainty.
 
-Before changing the project, the agent creates a short **success contract**:
-a list of things that must be true when the work is finished.
+## Low-token design
+
+DoneProof deliberately avoids a permanent second-agent judge.
+
+- task gates stay small;
+- checks fail fast;
+- CLI output is concise;
+- detailed evidence stays in files;
+- semantic plan comparison happens once at the end, not after every task;
+- a semantic audit is repeated only if something new was added or repaired.
+
+## Install
+
+Project-local:
 
 ```text
-- signed-out visitors are redirected
-- the authentication test passes
-- the project still builds
+<project>/.agents/skills/doneproof/
 ```
 
-The contract is locked before implementation starts. If a check fails, the
-agent cannot quietly lower the requirement just to declare success.
+Or copy it into your global Codex skills directory.
 
-After the change, DoneProof runs the agreed checks and returns a clear result:
+Optionally merge `AGENTS.example.md` into the project's `AGENTS.md`.
 
-| Result | Meaning |
-| --- | --- |
-| `VERIFIED_SUCCESS` | Everything that was agreed passed. |
-| `VERIFIED_PARTIAL` | Some checks passed, but the gate did not. |
-| `FAILED` | The observed result differs from what was expected. |
-| `BLOCKED` | An external limitation prevented verification. |
+## Normal task
 
-Only `VERIFIED_SUCCESS` allows a completion claim.
+Create and lock:
 
-## Automatic mode selection
+```bash
+python3 .agents/skills/doneproof/scripts/pod.py lock .proof-of-done/contract.json
+```
 
-You do not need to choose a mode. Codex chooses it before it locks the
-contract, based on the work it is about to do:
+Verify only the current gate:
 
-- `strict` for authentication, permissions, money, migrations, destructive
-  operations, and other high-risk work — up to 12 checks per gate.
-- `standard` for a feature boundary or meaningful integration — up to 7 checks.
-- `light` for everything else — up to 4 checks.
+```bash
+python3 .agents/skills/doneproof/scripts/pod.py verify .proof-of-done/contract.json --gate task-id
+```
 
-If more than one rule applies, Codex chooses the higher-risk mode. It writes
-that concrete choice into the contract before locking it. The contract does
-not use an `auto` value: the verifier needs a fixed limit, while Codex is the
-part with enough context to classify the task.
+Only `VERIFIED_SUCCESS` permits a completion claim.
 
-DoneProof is designed for long coding loops, so it keeps verification focused.
+## Large plan
 
-For a normal task, 2–4 checks are usually enough: prove the requested behavior,
-read changed state back when relevant, and run the smallest useful regression
-check. Each gate stops at its first failure to avoid wasting context on logs
-that do not change the next repair step.
-
-## Installation
-
-Copy this skill into the directory where Codex keeps global skills:
+Preserve the exact original plan:
 
 ```text
-~/.codex/skills/doneproof/
+.proof-of-done/plan.md
 ```
 
-Or install it only in one project:
-
-```text
-<your-project>/.agents/skills/doneproof/
-```
-
-You can also copy the guidance in [`AGENTS.example.md`](AGENTS.example.md)
-into your project’s `AGENTS.md`. That reminds Codex to verify important steps.
-
-## First use
-
-1. Before changing code, Codex chooses the mode and creates
-   `.proof-of-done/contract.json`.
-2. Describe the checks the task needs to pass. There is a ready-made
-   [example contract](examples/.proof-of-done/contract.json).
-3. Lock the contract:
-
-   ```bash
-   python3 .agents/skills/doneproof/scripts/pod.py lock .proof-of-done/contract.json
-   ```
-
-4. Make the change.
-5. Verify the current task gate:
-
-   ```bash
-   python3 .agents/skills/doneproof/scripts/pod.py verify .proof-of-done/contract.json --gate task-auth-redirect
-   ```
-
-The detailed evidence is saved locally in `.proof-of-done/ledger.json`.
-The command-line output stays short so long logs do not crowd the agent’s
-context.
-
-## Gates and dependencies
-
-Use a task gate after a bounded change. Use a feature gate after the last task
-in a user-visible feature, and a milestone gate only at a real checkpoint.
-
-When you verify a feature or milestone gate, DoneProof also rechecks the gates
-listed in its `depends_on` field. This is deliberate: closing a larger piece of
-work should confirm that the work it relies on still passes. Do not run those
-larger gates after every small task.
-
-If the same gate fails after three reasonable repairs without new evidence,
-stop and report the blocker instead of repeating the same loop.
-
-## What kinds of proof does it support?
-
-DoneProof has no extra dependencies and supports three check types:
-
-| Type | Use it for |
-| --- | --- |
-| `command` | Run tests, a build, or a command your project already uses. |
-| `file` | Confirm that a file exists or contains expected text. |
-| `http` | Open a URL and inspect the response, such as a redirect. |
-
-For anything else, use `command` to call the tool your project already has.
-DoneProof is a gate, not a replacement for your test framework.
-
-## An example check
-
-This check says: “opening the dashboard must redirect to the login page.”
+Add these fields to the contract:
 
 ```json
 {
-  "id": "redirect-when-signed-out",
-  "type": "http",
-  "url": "http://localhost:3000/dashboard",
-  "expect_status": 302,
-  "expect_headers": { "location": "/login" }
+  "mode": "standard",
+  "plan_path": ".proof-of-done/plan.md",
+  "requirements": [
+    {
+      "id": "R1",
+      "text": "Signed-out users are redirected to /login",
+      "gate": "task-auth-redirect"
+    }
+  ],
+  "final_gate": "module-final",
+  "gates": []
 }
 ```
 
-This is stronger than checking whether a file called `middleware` exists: it
-tests what a person using the system actually receives.
+Each requirement points to the gate that proves it.
 
-## Core ideas
+After all tasks, run the final gate and then:
 
-- **Do not accept “trust me.”** Another agent’s summary is not evidence.
-- **Check after changing something.** Create a record? Read it back. Deploy a page? Open it.
-- **Fix failures instead of lowering the bar.** The contract stays in place until the task passes.
-- **Test what matters.** Do not run every expensive check after every small change.
+```bash
+python3 .agents/skills/doneproof/scripts/pod.py coverage .proof-of-done/contract.json
+```
+
+A successful result looks like:
+
+```text
+VERIFIED_SUCCESS coverage=100% requirements=47/47 final_gate=module-final
+```
+
+## Final semantic audit
+
+After deterministic coverage reaches 100%, the coding agent performs one
+adversarial comparison:
+
+- original `.proof-of-done/plan.md`;
+- requirement matrix;
+- implementation;
+- verification evidence.
+
+The instruction is: **assume something may be missing and try to find a
+requested outcome that is absent, partial, or not actually proved.**
+
+If the audit finds an omitted requirement, add it and any new gate without
+changing old criteria, then run:
+
+```bash
+python3 .agents/skills/doneproof/scripts/pod.py extend .proof-of-done/contract.json
+```
+
+`extend` is monotonic: it rejects deletion or modification of existing
+requirements/gates and rejects lowering the verification mode.
+
+Then implement the gap, verify its gate, rerun the final gate, and rerun
+coverage.
+
+## Why the final gate must be last
+
+If a new requirement is verified after the final gate, DoneProof returns:
+
+```text
+INCOMPLETE_PLAN_COVERAGE ... final_gate=module-final:rerun-required
+```
+
+This prevents old integration evidence from being used to approve newly changed
+work.
+
+## Plan integrity
+
+When `plan_path` is present, DoneProof hashes the original plan at lock time.
+Changing the plan file afterward blocks verification.
+
+## Modes
+
+| Mode | Intended use | Max checks/gate |
+| --- | --- | ---: |
+| `light` | normal tasks | 4 |
+| `standard` | features/integrations | 7 |
+| `strict` | auth, permissions, money, migrations, destructive/high-risk work | 12 |
+
+The agent chooses the mode automatically. Use the smallest useful proof.
+
+## Supported checks
+
+DoneProof intentionally supports only:
+
+- `command`
+- `file`
+- `http`
+
+`command` can call the project's existing Playwright, Vitest, pytest, build,
+typecheck, database probes, Docker commands, mobile tests, migrations, or custom
+verification scripts.
+
+## State files
+
+```text
+.proof-of-done/lock.json
+.proof-of-done/ledger.json
+.proof-of-done/history.json
+.proof-of-done/coverage.json
+```
+
+The model normally needs only the concise CLI output. Detailed evidence is read
+only when debugging.
 
 ## Repository layout
 
 ```text
-SKILL.md                         Instructions for Codex
-scripts/pod.py                   Program that runs the checks
-examples/.proof-of-done/         Example success contract
-AGENTS.example.md                Optional text for AGENTS.md
+SKILL.md
+scripts/pod.py
+examples/.proof-of-done/contract.json
+examples/.proof-of-done/plan.md
+AGENTS.example.md
 ```
 
 ## Research foundations
 
-DoneProof is an engineering adaptation for coding agents, not a direct
-implementation of either paper below.
+DoneProof is an engineering adaptation, not a direct implementation of these
+papers:
 
-- [From Confident Closing to Silent Failure: Characterizing False Success in LLM Agents](https://arxiv.org/abs/2606.09863) (2026), by Laksh Advani, is the main conceptual foundation. It examines *false success*: an agent claims the task is complete even though the real system state shows failure. It also shows why reasoning and another LLM’s opinion do not replace checking the observed result.
-- [Real-Time Detection and Repair of LLM Agent Failures](https://arxiv.org/abs/2608.02464) (2026), by Sunny Dubey, reinforces the architectural direction: deterministic verification, confirmation that required actions occurred, and a loop of verify, detect failure, repair, and verify again.
-
-The locked success contract, SHA-256 lock, task/feature/milestone gates,
-fail-fast verifier, and `VERIFIED_SUCCESS` state are DoneProof’s practical
-architecture for looping engineering.
+- **From Confident Closing to Silent Failure: Characterizing False Success in
+  LLM Agents** — https://arxiv.org/abs/2606.09863
+- **Real-Time Detection and Repair of LLM Agent Failures** —
+  https://arxiv.org/abs/2608.02464
 
 ## License
 
-This project does not have a license yet. Choose one before distributing the
-code or accepting external contributions.
+This repository currently has no license. Add one before relying on standard
+open-source redistribution/contribution expectations.
