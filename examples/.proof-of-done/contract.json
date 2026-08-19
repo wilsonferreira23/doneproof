@@ -1,5 +1,19 @@
 {
-  "mode": "light",
+  "mode": "standard",
+  "plan_path": ".proof-of-done/plan.md",
+  "requirements": [
+    {
+      "id": "R1",
+      "text": "Signed-out users are redirected to /login",
+      "gate": "task-auth-redirect"
+    },
+    {
+      "id": "R2",
+      "text": "Authentication integration remains valid",
+      "gate": "feature-auth"
+    }
+  ],
+  "final_gate": "feature-auth",
   "gates": [
     {
       "id": "task-auth-redirect",
