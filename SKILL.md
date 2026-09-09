@@ -1,90 +1,46 @@
 ---
 name: doneproof
-description: Deterministic completion and plan-coverage gate for coding agents and looping engineering. Use before claiming implementation work is done, especially for long plans. Requires locked criteria, targeted verification, repair on failure, and 100% mapped plan coverage before final success.
+description: Define acceptance criteria before coding work and verify completion using current evidence. Use for implementation and long plans; protects criteria, tracks product changes and dependencies, and gates the final completion claim.
 ---
 
-# DoneProof 2.2
+# DoneProof 3
 
-Evidence decides when work is done.
+Only `finalize` emitting `VERIFIED_SUCCESS` authorizes completion. Gate PASS and coverage are intermediate results.
 
-## Modes
+## Choose the workflow first
 
-Choose automatically:
-- `strict`: auth, permissions, money, migrations, destructive/high-risk work; max 12 checks/gate.
-- `standard`: feature/integration boundary; max 7.
-- `light`: everything else; max 4.
+For integration, critical changes or long plans, read [the extended workflow](references/workflow.md) and [contract reference](references/contract.md). Use `standard` for integration boundaries; `strict` for auth, permissions, money, migrations or destructive work, with meaningful negative controls. Verify mutations through independent persisted-state readback, in isolation. See the [strict example](examples/strict/.proof-of-done/contract.json).
 
-Normal tasks should still use only 2-4 useful checks.
+For long plans, preserve the original, map every outcome to its source and proof, execute final integration, then audit semantic coverage before `finalize --audit`. Mechanical mapping alone cannot establish completeness.
 
-## Before implementation
+The `init` shortcut below creates only a `light` task. Use it only for small changes that do not involve an integration boundary, critical operation or long plan. Integration requires `standard` even when the patch is small.
 
-For non-trivial work, create `.proof-of-done/contract.json` and lock it.
+## Small changes
 
-For a large plan or multi-feature loop:
-1. save the original user plan unchanged to `.proof-of-done/plan.md`;
-2. add `plan_path`, `requirements`, and `final_gate` to the contract;
-3. give each required outcome a stable ID (`R1`, `R2`, ...);
-4. map every requirement to the gate that proves it.
+For this light code workflow, read the request and relevant source, then execute directly. Do not read verifier internals, schemas, examples or CLI help unless the documented workflow fails. Git inspection is unnecessary when the project has no Git repository.
 
-Keep requirement text short. The matrix is for coverage, not documentation.
+For a small full-file change, use ONE fail-fast shell call to write meaningful acceptance tests, stage the source, lock, copy, verify and finalize. Put a standalone Python acceptance script in the project root so imports of root modules work; use the project's existing test runner for an established test suite. Preparing a staged file does not change product code; copying it into place must follow the lock:
 
-Lock:
+```sh
+set -e
+# From the project root; replace both bodies with actual code:
+mkdir -p .proof-of-done/<task-id>/staged
+cat > acceptance.py <<'TEST'
+# meaningful assertions for the requested behavior
+TEST
+cat > .proof-of-done/<task-id>/staged/app.py <<'SOURCE'
+# finished source
+SOURCE
+python3 <skill-dir>/scripts/pod.py init .proof-of-done/<task-id>/contract.json --input app.py --criterion acceptance.py --run python3 acceptance.py
+cp .proof-of-done/<task-id>/staged/app.py app.py
+python3 <skill-dir>/scripts/pod.py verify .proof-of-done/<task-id>/contract.json --gate final
+python3 <skill-dir>/scripts/pod.py finalize .proof-of-done/<task-id>/contract.json
+```
 
-    python3 <skill-dir>/scripts/pod.py lock .proof-of-done/contract.json
+Use actual source/test paths without overwriting unrelated files. Repeat `--input` and `--criterion` for relevant files or source directories. `--run` goes last and takes separate argument tokens, never one quoted command string. `init` rejects unavailable executables before locking; it never executes or weakens tests. When a full-file rewrite is unsuitable, use native editing tools with the same lock-before-edit order, then batch verification and finalization. For artifact checks use the [file example](examples/basic/.proof-of-done/contract.json).
 
-Do not weaken locked criteria after failure.
+Batch initial project inspection with reading this skill. The verifier fingerprints files directly; Git is optional. Lock before changing product code. Batch verification and finalization, stopping on errors. Confirm the verification actually ran the intended tests. Inspect detailed proof to diagnose failures; successful small tasks need no extra state inspection, coverage call or duplicate verification.
 
-If the final audit discovers a requirement that was genuinely omitted from the contract, only ADD it (and any new gate) then run:
+Never weaken locked criteria. Authorized additions use `extend`. For an independently confirmed error in a light task's acceptance criterion, preserve the old file and history, write the corrected criterion to a new file, and initialize a new task using the same command plus `--supersedes <old-contract> --reason '<specific correction>'` before `--run`. This records the replacement without manual contract editing; it still requires new verification and finalization. Other justified replacements use the full workflow. Changed inputs or new attempts invalidate relevant old proofs. After three repairs without new evidence, report the blocker.
 
-    python3 <skill-dir>/scripts/pod.py extend .proof-of-done/contract.json
-
-`extend` rejects edits/removals of existing requirements or gates.
-
-## Loop
-
-    implement -> targeted task gate -> FAIL: repair -> same gate
-                                    -> PASS: next task
-
-Verify:
-
-    python3 <skill-dir>/scripts/pod.py verify .proof-of-done/contract.json --gate <gate-id>
-
-Use feature gates only when a feature closes and milestone gates at real checkpoints.
-After 3 reasonable repairs on the same gate without materially new evidence, stop thrashing and report the blocker.
-
-## Verification rules
-
-- Tool success, agent reasoning, and another agent's summary are not proof.
-- Mutations require write -> read back -> compare.
-- Prefer observable behavior/state over source inspection.
-- Never advance on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
-- Use concise CLI output; inspect ledger only to debug.
-
-## Plan Coverage Loop
-
-For large plans, after implementation:
-
-1. run the final integration/module gate;
-2. run deterministic coverage:
-
-       python3 <skill-dir>/scripts/pod.py coverage .proof-of-done/contract.json
-
-3. read `.proof-of-done/plan.md` and `.proof-of-done/coverage.json` once;
-4. assume something may be missing and compare the original plan against:
-   - requirement IDs,
-   - implemented behavior,
-   - verification evidence;
-5. if something is missing/partial: add the omitted requirement/gate with `extend`, implement it, verify it, rerun the final gate, then rerun coverage;
-6. stop only when no semantic gap is found and coverage returns `VERIFIED_SUCCESS coverage=100%`.
-
-Do not repeat the semantic audit when nothing new changed.
-
-## Completion
-
-For normal tasks, the applicable gate must return `VERIFIED_SUCCESS`.
-
-For a large plan, BOTH are required:
-- final gate: `VERIFIED_SUCCESS`;
-- coverage: `VERIFIED_SUCCESS coverage=100%`.
-
-100% coverage means every explicitly extracted requirement has executable proof. It is strong evidence, not mathematical certainty.
+If started late, disclose that criteria lacked prior protection. Meaningful tests and complete inventories remain the agent's responsibility. Local hashes do not defend against a hostile verifier rewrite. See [migration and recovery](README.md).

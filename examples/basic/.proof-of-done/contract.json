@@ -1,0 +1,27 @@
+{
+  "schema_version": 3,
+  "task_id": "basic",
+  "root": "..",
+  "kind": "task",
+  "mode": "light",
+  "final_gate": "result",
+  "gates": [
+    {
+      "id": "result",
+      "level": "task",
+      "inputs": [
+        "result.txt"
+      ],
+      "criteria": [],
+      "checks": [
+        {
+          "id": "content",
+          "type": "file",
+          "purpose": "behavior",
+          "path": "result.txt",
+          "equals": "ready\n"
+        }
+      ]
+    }
+  ]
+}

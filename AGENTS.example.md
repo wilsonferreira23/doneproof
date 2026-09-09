@@ -1,25 +1,14 @@
 ## DoneProof
 
-Use `doneproof` for non-trivial implementation work.
+For nontrivial implementation, read the installed DoneProof SKILL.md before
+changing product code. Use a separate contract directory per task and lock
+meaningful criteria before implementation. Include relevant input and criterion
+files. Verify at task/feature boundaries and repair failures before advancing.
 
-Choose mode automatically: `strict` for high-risk work, `standard` for feature/integration boundaries, `light` otherwise. Keep task gates small.
+Only `pod.py finalize` returning `VERIFIED_SUCCESS` authorizes completion.
+For large plans, preserve the original plan and additions, cover every outcome,
+then perform and record a semantic audit tied to current proofs. `GATE_PASS` and
+`COVERAGE_COMPLETE` alone do not authorize a completion claim.
 
-For large plans:
-1. preserve the original plan in `.proof-of-done/plan.md`;
-2. map every required outcome to a stable requirement ID and proof gate;
-3. lock before implementation.
-
-Loop:
-`implement -> targeted gate -> repair -> same gate -> next task`
-
-Never advance on `FAILED`, `BLOCKED`, or `VERIFIED_PARTIAL`.
-Mutations require read-back verification.
-After 3 failed repairs without new evidence, stop thrashing.
-
-Before declaring a large plan complete:
-1. run its final gate;
-2. run `pod.py coverage`;
-3. do one semantic audit comparing the original plan to the coverage matrix;
-4. if a missing requirement is found, append it with `pod.py extend`, implement/verify it, rerun the final gate and coverage.
-
-Completion requires final-gate `VERIFIED_SUCCESS` and `coverage=100%`.
+Read-back must confirm mutations. Keep checks observational or isolated; do not
+repeat a production write to refresh evidence. Do not weaken tests after failure.

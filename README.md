@@ -1,214 +1,71 @@
-# DoneProof 2.2
+# DoneProof 3.0
 
-DoneProof is a lightweight deterministic completion gate for coding agents.
+DoneProof checks declared acceptance evidence before a coding agent claims
+completion. The CLI stays in Python's standard library. It does not measure the
+semantic truth of arbitrary tests or the completeness of a natural-language plan.
 
-It addresses two different failure modes:
+Read [SKILL.md](SKILL.md) for the agent workflow and
+[references/contract.md](references/contract.md) for the schema and audit format.
 
-1. **False success** — the agent says work is done without proving the behavior.
-2. **Plan omission** — a long implementation loop finishes while parts of the original plan were never implemented or verified.
+From the skill directory, run:
 
-DoneProof 2.2 keeps the low-token 2.1 verifier and adds **Plan Coverage**.
-
-## Core loop
-
-```text
-original plan
-  ↓
-requirements R1..Rn
-  ↓
-implement → targeted gate → repair if needed
-  ↓
-final integration gate
-  ↓
-coverage
-  ↓
-one semantic audit against the original plan
-  ↓
-missing item? → extend → implement → verify → final gate → coverage
-  ↓
-VERIFIED_SUCCESS coverage=100%
+```sh
+python3 -m unittest discover -s tests -v
+python3 scripts/check_package.py
 ```
 
-`coverage=100%` means every extracted requirement has executable PASS evidence and
-the final integration gate was run after the latest requirement proof. It is
-strong evidence, not mathematical certainty.
+The runnable examples live in `examples/basic`, `examples/code` and `examples/strict`. Copy an
+example to a temporary project before executing it so the distributed examples
+remain clean. The package check does this automatically.
 
-## Low-token design
+Only `finalize` emits global `VERIFIED_SUCCESS`. `GATE_PASS` and
+`COVERAGE_COMPLETE` are intermediate results. Every new verification attempt
+invalidates old dependent evidence. Product inputs and protected criterion files
+are fingerprinted; completed proofs retain detailed observations and dependency
+references. State updates are atomic and operations are serialized per task.
 
-DoneProof deliberately avoids a permanent second-agent judge.
+## Migration from 2.2
 
-- task gates stay small;
-- checks fail fast;
-- CLI output is concise;
-- detailed evidence stays in files;
-- semantic plan comparison happens once at the end, not after every task;
-- a semantic audit is repeated only if something new was added or repaired.
+This is schema 3, not a transparent state upgrade. Preserve 2.2 contract, plan,
+ledger and history as historical records. Create a new contract in a new task
+directory and execute fresh proofs. Never copy PASS records into schema 3.
+Update scripts that interpreted any `verify` success as overall completion.
 
-## Install
+The state directory is now the contract directory, independent of the process
+working directory. Use `.proof-of-done/<task-id>/contract.json` with `root: ../..`.
+For a justified replacement of criteria, create a new task directory and record
+`supersedes` with old task ID, contract digest and reason; preserve the old data.
+Authorized additions to the original plan use immutable `plan_additions` files.
 
-Project-local:
+## Recovery and boundaries
 
-```text
-<project>/.agents/skills/doneproof/
-```
+A killed process can leave RUNNING state. Reexecute its gate, then affected
+integrations. OS advisory locks are released when the process exits; do not delete
+a live lock file to start a competing verifier. A corrupted state/proof blocks
+completion. Recover from a known-good backup or create a new task and rerun proof;
+never relabel damaged evidence as PASS.
 
-Or copy it into your global Codex skills directory.
+Input inventories must include relevant source, fixtures and configuration.
+Hashes detect changes to declared files, not undisclosed dependencies. Commands
+must be observational or isolated; declarations alone cannot infer effects.
+HTTP observations prove external state at the recorded time. Permanent services
+and production writes do not belong inside a verification command.
 
-Optionally merge `AGENTS.example.md` into the project's `AGENTS.md`.
+Supported target platforms are Linux and macOS with Python 3.10+. The CI workflow
+covers both. Windows, symlinks, special-file inputs and distributed shared-state
+execution are not supported. See the contract reference for bounded input/output
+sizes, credential handling and check constraints.
 
-## Normal task
+The independent agent benchmark is described in `references/evaluation.md`.
+An installed candidate is not a demonstrated 9/10 release: empirical results,
+false-block rate, completion rate and token costs must meet the frozen protocol.
+The historical research links in the 2.2 audit motivate the approach; they are
+not benchmark results for this implementation.
 
-Create and lock:
+This package has no license grant. Preserve the existing ownership/licensing
+status when redistributing it.
 
-```bash
-python3 .agents/skills/doneproof/scripts/pod.py lock .proof-of-done/contract.json
-```
+See [historical rc1 validation](references/validation.md). The reserved final evaluation is reported separately; historical pilot results
+do not qualify this release by themselves.
 
-Verify only the current gate:
-
-```bash
-python3 .agents/skills/doneproof/scripts/pod.py verify .proof-of-done/contract.json --gate task-id
-```
-
-Only `VERIFIED_SUCCESS` permits a completion claim.
-
-## Large plan
-
-Preserve the exact original plan:
-
-```text
-.proof-of-done/plan.md
-```
-
-Add these fields to the contract:
-
-```json
-{
-  "mode": "standard",
-  "plan_path": ".proof-of-done/plan.md",
-  "requirements": [
-    {
-      "id": "R1",
-      "text": "Signed-out users are redirected to /login",
-      "gate": "task-auth-redirect"
-    }
-  ],
-  "final_gate": "module-final",
-  "gates": []
-}
-```
-
-Each requirement points to the gate that proves it.
-
-After all tasks, run the final gate and then:
-
-```bash
-python3 .agents/skills/doneproof/scripts/pod.py coverage .proof-of-done/contract.json
-```
-
-A successful result looks like:
-
-```text
-VERIFIED_SUCCESS coverage=100% requirements=47/47 final_gate=module-final
-```
-
-## Final semantic audit
-
-After deterministic coverage reaches 100%, the coding agent performs one
-adversarial comparison:
-
-- original `.proof-of-done/plan.md`;
-- requirement matrix;
-- implementation;
-- verification evidence.
-
-The instruction is: **assume something may be missing and try to find a
-requested outcome that is absent, partial, or not actually proved.**
-
-If the audit finds an omitted requirement, add it and any new gate without
-changing old criteria, then run:
-
-```bash
-python3 .agents/skills/doneproof/scripts/pod.py extend .proof-of-done/contract.json
-```
-
-`extend` is monotonic: it rejects deletion or modification of existing
-requirements/gates and rejects lowering the verification mode.
-
-Then implement the gap, verify its gate, rerun the final gate, and rerun
-coverage.
-
-## Why the final gate must be last
-
-If a new requirement is verified after the final gate, DoneProof returns:
-
-```text
-INCOMPLETE_PLAN_COVERAGE ... final_gate=module-final:rerun-required
-```
-
-This prevents old integration evidence from being used to approve newly changed
-work.
-
-## Plan integrity
-
-When `plan_path` is present, DoneProof hashes the original plan at lock time.
-Changing the plan file afterward blocks verification.
-
-## Modes
-
-| Mode | Intended use | Max checks/gate |
-| --- | --- | ---: |
-| `light` | normal tasks | 4 |
-| `standard` | features/integrations | 7 |
-| `strict` | auth, permissions, money, migrations, destructive/high-risk work | 12 |
-
-The agent chooses the mode automatically. Use the smallest useful proof.
-
-## Supported checks
-
-DoneProof intentionally supports only:
-
-- `command`
-- `file`
-- `http`
-
-`command` can call the project's existing Playwright, Vitest, pytest, build,
-typecheck, database probes, Docker commands, mobile tests, migrations, or custom
-verification scripts.
-
-## State files
-
-```text
-.proof-of-done/lock.json
-.proof-of-done/ledger.json
-.proof-of-done/history.json
-.proof-of-done/coverage.json
-```
-
-The model normally needs only the concise CLI output. Detailed evidence is read
-only when debugging.
-
-## Repository layout
-
-```text
-SKILL.md
-scripts/pod.py
-examples/.proof-of-done/contract.json
-examples/.proof-of-done/plan.md
-AGENTS.example.md
-```
-
-## Research foundations
-
-DoneProof is an engineering adaptation, not a direct implementation of these
-papers:
-
-- **From Confident Closing to Silent Failure: Characterizing False Success in
-  LLM Agents** — https://arxiv.org/abs/2606.09863
-- **Real-Time Detection and Repair of LLM Agent Failures** —
-  https://arxiv.org/abs/2608.02464
-
-## License
-
-This repository currently has no license. Add one before relying on standard
-open-source redistribution/contribution expectations.
+Small code tasks can use `pod.py init` to generate and lock a light contract from existing acceptance files. See SKILL.md for the complete command; full contracts remain available for plans and higher-risk work.

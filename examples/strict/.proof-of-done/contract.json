@@ -1,0 +1,152 @@
+{
+  "schema_version": 3,
+  "task_id": "strict-example",
+  "root": "..",
+  "kind": "plan",
+  "mode": "strict",
+  "plan_path": "plan.md",
+  "final_gate": "final",
+  "mutations": [
+    {
+      "outcome": "Saved value persists exactly",
+      "gate": "readback",
+      "check": "readback"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "R1",
+      "text": "Operators may read protected content.",
+      "source": "Operators may read protected content.",
+      "gate": "behavior"
+    },
+    {
+      "id": "R2",
+      "text": "Guests must be rejected.",
+      "source": "Guests must be rejected.",
+      "gate": "negative"
+    },
+    {
+      "id": "R3",
+      "text": "Saving a value must persist exactly that value.",
+      "source": "Saving a value must persist exactly that value.",
+      "gate": "readback"
+    },
+    {
+      "id": "R4",
+      "text": "The complete flow must work together.",
+      "source": "The complete flow must work together.",
+      "gate": "final"
+    }
+  ],
+  "gates": [
+    {
+      "id": "behavior",
+      "level": "task",
+      "inputs": [
+        "product.py"
+      ],
+      "criteria": [
+        "acceptance.py"
+      ],
+      "depends_on": [],
+      "checks": [
+        {
+          "id": "behavior",
+          "type": "command",
+          "purpose": "behavior",
+          "effect": "isolated_test",
+          "argv": [
+            "python3",
+            "acceptance.py",
+            "behavior"
+          ],
+          "expect_exit": 0,
+          "stdout_contains": "executed acceptance assertions:"
+        }
+      ]
+    },
+    {
+      "id": "negative",
+      "level": "task",
+      "inputs": [
+        "product.py"
+      ],
+      "criteria": [
+        "acceptance.py"
+      ],
+      "depends_on": [],
+      "checks": [
+        {
+          "id": "negative",
+          "type": "command",
+          "purpose": "negative",
+          "effect": "isolated_test",
+          "argv": [
+            "python3",
+            "acceptance.py",
+            "negative"
+          ],
+          "expect_exit": 0,
+          "stdout_contains": "executed acceptance assertions:"
+        }
+      ]
+    },
+    {
+      "id": "readback",
+      "level": "task",
+      "inputs": [
+        "product.py"
+      ],
+      "criteria": [
+        "acceptance.py"
+      ],
+      "depends_on": [],
+      "checks": [
+        {
+          "id": "readback",
+          "type": "command",
+          "purpose": "readback",
+          "effect": "isolated_test",
+          "argv": [
+            "python3",
+            "acceptance.py",
+            "readback"
+          ],
+          "expect_exit": 0,
+          "stdout_contains": "executed acceptance assertions:"
+        }
+      ]
+    },
+    {
+      "id": "final",
+      "level": "feature",
+      "inputs": [
+        "product.py"
+      ],
+      "criteria": [
+        "acceptance.py"
+      ],
+      "depends_on": [
+        "behavior",
+        "negative",
+        "readback"
+      ],
+      "checks": [
+        {
+          "id": "integration",
+          "type": "command",
+          "purpose": "integration",
+          "effect": "isolated_test",
+          "argv": [
+            "python3",
+            "acceptance.py",
+            "integration"
+          ],
+          "expect_exit": 0,
+          "stdout_contains": "executed acceptance assertions:"
+        }
+      ]
+    }
+  ]
+}
