@@ -21,7 +21,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = '3.0.0'
+VERSION = 'DoneProof'
 SCHEMA = 3
 LIMITS = {'light': 4, 'standard': 7, 'strict': 12}
 MAX_OUTPUT = 1024 * 1024

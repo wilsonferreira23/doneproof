@@ -1,4 +1,4 @@
-# DoneProof 3.0
+# DoneProof
 
 DoneProof checks declared acceptance evidence before a coding agent claims
 completion. The CLI stays in Python's standard library. It does not measure the

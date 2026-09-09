@@ -1,4 +1,4 @@
-# Validation of 3.0.0-rc1
+# Historical validation record
 
 Recorded 2026-09-08. This is a candidate release, not a demonstrated 9/10 result.
 

@@ -3,7 +3,7 @@ name: doneproof
 description: Define acceptance criteria before coding work and verify completion using current evidence. Use for implementation and long plans; protects criteria, tracks product changes and dependencies, and gates the final completion claim.
 ---
 
-# DoneProof 3
+# DoneProof
 
 Only `finalize` emitting `VERIFIED_SUCCESS` authorizes completion. Gate PASS and coverage are intermediate results.
 

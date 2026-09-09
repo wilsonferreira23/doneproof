@@ -1,4 +1,4 @@
-# DoneProof 3
+# DoneProof
 
 Only `finalize` authorizes a completion claim. Gate PASS and complete coverage are intermediate results.
 
