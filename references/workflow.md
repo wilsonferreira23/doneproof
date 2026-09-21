@@ -1,51 +1,84 @@
-# DoneProof
+# DoneProof extended workflow
 
-Only `finalize` authorizes a completion claim. Gate PASS and complete coverage are intermediate results.
+## Prepare
 
-## Prepare before implementation
+Use the risk routing in [SKILL.md](../SKILL.md). Create a contract in
+`.proof-of-done/<task-id>/contract.json`, with `root: ../..`. Adapt the
+[standard template](contract.md#standard-template), [artifact example](../examples/basic/.proof-of-done/contract.json)
+or [strict plan example](../examples/strict/.proof-of-done/contract.json).
+Read the [schema](contract.md) only for fields the chosen example does not cover.
 
-For a small code change, adapt the [code example](../examples/code/.proof-of-done/contract.json); for an artifact use the [file example](../examples/basic/.proof-of-done/contract.json). Read [the contract reference](contract.md) for additional fields, plans or audits, and use the [strict plan example](../examples/strict/.proof-of-done/contract.json) when applicable. Commands below use the installed skill's `scripts/pod.py`.
+Declare relevant source, test fixtures and configuration as inputs. Protected
+criteria express the agreed acceptance; ordinary tests that need implementation
+can remain editable product inputs, with a separate protected acceptance file.
+Git diffs help inspect changes but do not enumerate every dependency. Checks must
+not write into their input inventory; use temporary fixtures outside it.
 
-For nontrivial work, create `.proof-of-done/<task-id>/contract.json`, with `root` relative to that directory. Use a separate directory for each task. Declare the product inputs, protected acceptance files, checks, and final gate. Product inputs may change during implementation; protected criteria may not silently change after locking. Include relevant test fixtures/configuration and newly created source directories in the inventory.
+For a plan, preserve the original unchanged, set `kind: plan`, and map every
+required outcome to its literal source excerpt and a proof gate. Administrative
+steps do not need artificial tests. Preserve authorized additions in separate
+`plan_additions` files. Choose the mode by risk, independently of plan length.
 
-Choose `light` for a small outcome, `standard` for a feature/integration boundary, and `strict` for auth, permissions, money, migrations or destructive work. Limits are 4/7/12 checks per gate. Normally 2–4 useful checks suffice. Standard requires behavior and final integration proof; strict also requires a relevant negative/control case. Categories describe checks; they do not prove that a test is meaningful.
+Lock before editing:
 
-For a large plan, choose `kind: plan`, preserve the user's original plan unchanged, and map every required outcome to a stable requirement ID, a literal source excerpt and a proof gate. Preserve authorized additions separately with `plan_additions`.
+```sh
+python3 <skill-dir>/scripts/pod.py lock <contract>
+```
 
-Lock before implementation:
+The initial lock checks command executables and working directories without
+executing tests. Then edit with native tools. Verify at meaningful milestones
+using `verify <contract> --gate <id>`. Final verification reruns its dependencies;
+avoid separately running those gates immediately before final merely as ritual.
+Requirements outside final's dependency graph must be verified before final.
 
-    python3 <skill-dir>/scripts/pod.py lock <contract>
+Standard work requires a behavior check and final integration. Strict also
+requires a meaningful negative control: demonstrate rejection of a known wrong
+state in an isolated fixture. Purpose labels do not establish meaningful tests.
+For mutations, map each persisted outcome to a `readback` check that independently
+reads and compares the saved state. Never replay production writes for evidence.
 
-Use existing project tests. Check that the test runner selected real tests. For critical behavior, demonstrate that the acceptance test rejects a known wrong state in an isolated fixture. Do not treat a process exiting zero, a source substring or another agent's summary as sufficient proof of behavior.
+## Finish and audit
 
-## Implement and verify
+```sh
+python3 <skill-dir>/scripts/pod.py finish <contract>
+```
 
-Implement → verify the closing task gate → repair on failure → verify that gate again.
+Tasks finalize after passing verification. Plans return `AUDIT_REQUIRED` (exit 2)
+and the path to `audit-draft-<snapshot>.json`, with identity fields filled and
+assessments blank. This expected pending state is not a test failure or approval.
 
-Batch tool calls when their dependencies allow. Lock, implementation and verification may share a scripted call if lock runs first and every failure stops the script. Keep successful check output concise.
+Compare the preserved plan and additions with implemented behavior, requirements
+and referenced proofs. Fill every `assessment`, the whole `plan_review`, and
+`gaps` honestly. Coverage only proves the explicitly declared mapping. The CLI
+cannot determine whether a reviewer's prose is true. Finalize that snapshot:
 
-    python3 <skill-dir>/scripts/pod.py verify <contract> --gate <gate-id>
+```sh
+python3 <skill-dir>/scripts/pod.py finish <contract> --audit <draft-path>
+```
 
-Never advance on failure, blockage, interruption or stale evidence. A new attempt invalidates old dependent proofs. Run feature/final gates at actual checkpoints; dependency gates execute again. Inspect the referenced proof when diagnosing a failure. After three reasonable repairs without materially new evidence, report the blocker; the CLI cannot judge whether new evidence is meaningful.
+This call never reruns tests. Stale evidence/audits block. After repairing gaps,
+run `finish` without `--audit` for fresh proofs and a new draft; preserve the old
+review. For manually verified current evidence, `finalize --audit` remains valid.
+Only current `VERIFIED_SUCCESS` authorizes a full completion claim.
 
-Keep verification observational or isolated. Mutations require write → independent read-back → comparison with the intended persisted state. Map each mutation to a `readback` check. A successful write response alone is insufficient. Never replay a production write merely to refresh proof; arbitrary commands require effect review. HTTP checks are GET/HEAD only.
+## Extend, recover and coordinate
 
-Do not weaken locked tests to make failures pass. Add omitted outcomes/gates with `extend`; it preserves existing criteria and invalidates the affected proofs and final. A legitimate replacement of criteria needs a new task contract with `supersedes` and a recorded reason, preserving the original. Use existing user authorization; this does not require repetitive approval questions.
+Authorized additions use `extend`: add gates/requirements to the contract, then
+run `extend <contract>`. Existing gates, criteria and outcomes cannot be weakened
+or removed. A justified replacement uses a new task directory and `supersedes`
+with the previous task ID, contract digest and specific reason; preserve the old
+files and obtain new evidence. Do not downgrade risk to escape required checks.
+The light-task shortcut is documented in SKILL.md.
 
-    python3 <skill-dir>/scripts/pod.py extend <contract>
+`coverage <contract> --summary` reports the project root, revision, requirement
+states, stale reasons and evidence path. Resume from those records rather than
+conversation memory. For interrupted checks, rerun their gate and affected final
+integration. For damaged state, preserve history and restore a known-good backup
+or create a fresh task. Never delete locks/history to turn failure into PASS.
 
-## Complete
-
-Execute the final gate, then `coverage`. Coverage means valid evidence exists for the explicitly extracted outcomes, not that every intended outcome was extracted.
-
-    python3 <skill-dir>/scripts/pod.py coverage <contract>
-
-For a plan, compare the preserved plan and additions against requirement IDs, implemented behavior and the referenced proof files. Assume something may be missing. Record each assessment and the whole-plan review in the [audit format](contract.md#audit). Do not generate an automatic positive assessment from coverage alone. Fix gaps using the extension loop, rerun affected gates and final, then redo the changed audit. No repeated semantic audit is needed when the relevant snapshot is unchanged.
-
-    python3 <skill-dir>/scripts/pod.py finalize <contract> --audit <audit.json>
-
-For `kind: task`, omit `--audit`. Only a current `VERIFIED_SUCCESS` from this command permits claiming completion. Inputs or proofs changing afterward require revalidation; a saved completion report is not permanent authorization. External state is proved at the recorded observation time.
-
-If work began without a contract, verify the current result and disclose that the criteria were not locked beforehand. Never claim retroactive protection. For 2.2 state migration, recovery and platform limits, read [README.md](../README.md).
-
-The CLI detects stale, incomplete or contradictory declared evidence. The agent remains responsible for complete input inventories, meaningful tests and semantic review. Local hashes do not protect against a hostile process rewriting the verifier and its entire state.
+Use one coordinator for the overall contract and explicit scopes for subagents.
+Separate tasks need separate state directories. Prefer worktrees for overlapping
+edits. OS locks serialize verifier operations per task; they do not lock editors
+or other contracts. Relevant concurrent changes invalidate evidence. Agent
+summaries alone are not proof. See [installation and recovery](../README.md) for
+updates, rollback and platform limitations.

@@ -234,7 +234,8 @@ class CliTests(unittest.TestCase):
         (self.root / 'criterion.txt').write_text('Must report ready')
         self.contract['gates'][0]['criteria'] = ['criterion.txt']
         self.contract['gates'][0]['checks'][0]['argv'] = ['./missing']
-        self.ok('lock')
+        self.bad('lock')
+        self.assertFalse((self.folder / 'state.json').exists())
         self.bad('verify', 'task')
         self.bad('coverage')
 

@@ -1,46 +1,46 @@
 ---
 name: doneproof
-description: Define acceptance criteria before coding work and verify completion using current evidence. Use for implementation and long plans; protects criteria, tracks product changes and dependencies, and gates the final completion claim.
+description: Protect acceptance criteria and verify completion for coding changes and execution of implementation plans. Skip questions, read-only analysis, planning without execution and trivial prose edits unless explicitly requested.
 ---
 
 # DoneProof
 
-Only `finalize` emitting `VERIFIED_SUCCESS` authorizes completion. Gate PASS and coverage are intermediate results.
+Define what must work before editing, then obtain current evidence. Completion requires `VERIFIED_SUCCESS` from finalization, directly or through `finish`. Failed verification still permits an honest progress or blocker report. Follow the user's scope and existing authorization; do not introduce repeated approval questions.
 
-## Choose the workflow first
+## Choose proportionate verification
 
-For integration, critical changes or long plans, read [the extended workflow](references/workflow.md) and [contract reference](references/contract.md). Use `standard` for integration boundaries; `strict` for auth, permissions, money, migrations or destructive work, with meaningful negative controls. Verify mutations through independent persisted-state readback, in isolation. See the [strict example](examples/strict/.proof-of-done/contract.json).
+| Work | Mode |
+| --- | --- |
+| Small local change | `light` |
+| Feature crossing an integration boundary | `standard` |
+| Authentication, permissions, money, migrations or destructive operations | `strict` |
 
-For long plans, preserve the original, map every outcome to its source and proof, execute final integration, then audit semantic coverage before `finalize --audit`. Mechanical mapping alone cannot establish completeness.
-
-The `init` shortcut below creates only a `light` task. Use it only for small changes that do not involve an integration boundary, critical operation or long plan. Integration requires `standard` even when the patch is small.
+Patch size does not determine risk. A one-line permission change is strict. Executing a long plan additionally uses `kind: plan`; choose its mode by risk. For integrations, strict work, artifacts or plans, read [the extended workflow](references/workflow.md). The shortcut below creates only a light task.
 
 ## Small changes
 
-For this light code workflow, read the request and relevant source, then execute directly. Do not read verifier internals, schemas, examples or CLI help unless the documented workflow fails. Git inspection is unnecessary when the project has no Git repository.
+Read the request and relevant source. Reuse meaningful project tests or prepare acceptance assertions for the requested outcome. Distinguish editable product/tests from protected acceptance criteria; use a separate acceptance file when project tests must change. Include relevant source, fixtures and configuration in the input inventory. Directories cover newly created files. Git is optional.
 
-For a small full-file change, use ONE fail-fast shell call to write meaningful acceptance tests, stage the source, lock, copy, verify and finalize. Put a standalone Python acceptance script in the project root so imports of root modules work; use the project's existing test runner for an established test suite. Preparing a staged file does not change product code; copying it into place must follow the lock:
+From the project root, protect the criteria before changing product code:
 
 ```sh
-set -e
-# From the project root; replace both bodies with actual code:
-mkdir -p .proof-of-done/<task-id>/staged
-cat > acceptance.py <<'TEST'
-# meaningful assertions for the requested behavior
-TEST
-cat > .proof-of-done/<task-id>/staged/app.py <<'SOURCE'
-# finished source
-SOURCE
 python3 <skill-dir>/scripts/pod.py init .proof-of-done/<task-id>/contract.json --input app.py --criterion acceptance.py --run python3 acceptance.py
-cp .proof-of-done/<task-id>/staged/app.py app.py
-python3 <skill-dir>/scripts/pod.py verify .proof-of-done/<task-id>/contract.json --gate final
-python3 <skill-dir>/scripts/pod.py finalize .proof-of-done/<task-id>/contract.json
 ```
 
-Use actual source/test paths without overwriting unrelated files. Repeat `--input` and `--criterion` for relevant files or source directories. `--run` goes last and takes separate argument tokens, never one quoted command string. `init` rejects unavailable executables before locking; it never executes or weakens tests. When a full-file rewrite is unsuitable, use native editing tools with the same lock-before-edit order, then batch verification and finalization. For artifact checks use the [file example](examples/basic/.proof-of-done/contract.json).
+Replace the example paths and command with the project's actual acceptance check. Repeat `--input` and `--criterion` as necessary. Acceptance files must already exist. `--run` goes last and receives separate argument tokens, not one quoted command string. Put standalone Python acceptance scripts where root-module imports resolve; otherwise use the project's existing test runner.
 
-Batch initial project inspection with reading this skill. The verifier fingerprints files directly; Git is optional. Lock before changing product code. Batch verification and finalization, stopping on errors. Confirm the verification actually ran the intended tests. Inspect detailed proof to diagnose failures; successful small tasks need no extra state inspection, coverage call or duplicate verification.
+Edit with native tools, then conclude:
 
-Never weaken locked criteria. Authorized additions use `extend`. For an independently confirmed error in a light task's acceptance criterion, preserve the old file and history, write the corrected criterion to a new file, and initialize a new task using the same command plus `--supersedes <old-contract> --reason '<specific correction>'` before `--run`. This records the replacement without manual contract editing; it still requires new verification and finalization. Other justified replacements use the full workflow. Changed inputs or new attempts invalidate relevant old proofs. After three repairs without new evidence, report the blocker.
+```sh
+python3 <skill-dir>/scripts/pod.py finish .proof-of-done/<task-id>/contract.json
+```
 
-If started late, disclose that criteria lacked prior protection. Meaningful tests and complete inventories remain the agent's responsibility. Local hashes do not defend against a hostile verifier rewrite. See [migration and recovery](README.md).
+`finish` runs the final gate and its dependencies, stops on failure, and finalizes a passing task. Confirm the intended tests actually ran and assertions demonstrate the requested behavior. Successful small tasks need no separate coverage call, duplicate verification, schema reading or inspection of verifier internals. No staging folder or full-file rewrite is required.
+
+## Recover and resume
+
+On failure, use the reported evidence and next action. Investigate product behavior, test selection and execution environment before deciding what to repair. Never weaken locked criteria to obtain PASS. For a confirmed light-task criterion error, preserve the original file/history, write a corrected file, and run `init` in a new task directory with `--supersedes <old-contract> --reason '<specific correction>'` before `--run`. New proof remains mandatory. Other replacements and authorized additions use the extended workflow.
+
+Use `coverage <contract> --summary` when resuming or diagnosing an existing task. Stop repeated repairs when they produce no new evidence and report the remaining blocker. Changes or new attempts invalidate relevant old proofs.
+
+Use a separate state directory per task. Checks must observe or operate in isolated fixtures; never replay production writes for verification. If activated after implementation began, disclose that criteria lacked prior protection. Meaningful tests, complete inventories and semantic review remain the agent's responsibility. See [recovery and platform boundaries](README.md) when needed.

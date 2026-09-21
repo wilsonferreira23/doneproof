@@ -20,7 +20,7 @@ def call(root, action, *args, success=True):
 
 
 def main():
-    for path in [ROOT / 'SKILL.md', ROOT / 'README.md']:
+    for path in [ROOT / 'SKILL.md', ROOT / 'README.md', * (ROOT / 'references').glob('*.md')]:
         for link in re.findall(r'\]\(([^)]+)\)', path.read_text()):
             if '://' not in link:
                 assert (path.parent / link.split('#')[0]).exists(), link
@@ -30,17 +30,17 @@ def main():
             shutil.copytree(ROOT / 'examples' / name, root)
             contract = json.loads((root / '.proof-of-done/contract.json').read_text())
             call(root, 'lock')
-            call(root, 'verify', '--gate', contract['final_gate'])
-            call(root, 'coverage')
             args = []
             if name == 'strict':
-                report = json.loads((root / '.proof-of-done/coverage.json').read_text())
-                audit = {k: report[k] for k in ('schema_version', 'revision', 'contract_sha256', 'plans_sha256', 'snapshot')}
+                assert 'AUDIT_REQUIRED' in call(root, 'finish', success=False)
+                draft = next((root / '.proof-of-done').glob('audit-draft-*.json'))
+                call(root, 'finish', '--audit', str(draft), success=False)
+                audit = json.loads(draft.read_text())
                 audit.update(gaps=[], plan_review='Example fixture: operator access, guest rejection, persisted readback and their combined flow are each exercised.',
-                             requirements=[{k: r[k] for k in ('id', 'source', 'proof')} | {'assessment': 'The distributed acceptance.py assertion for this purpose executed against product.py.'} for r in report['requirements']])
+                             requirements=[dict(r, assessment='The distributed acceptance.py assertion for this purpose executed against product.py.') for r in audit['requirements']])
                 (root / 'audit.json').write_text(json.dumps(audit))
                 args = ['--audit', str(root / 'audit.json')]
-            assert 'VERIFIED_SUCCESS' in call(root, 'finalize', *args)
+            assert 'VERIFIED_SUCCESS' in call(root, 'finish', *args)
             if name == 'strict':
                 path = root / 'product.py'
                 original = path.read_text()

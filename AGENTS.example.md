@@ -1,14 +1,11 @@
 ## DoneProof
 
-For nontrivial implementation, read the installed DoneProof SKILL.md before
-changing product code. Use a separate contract directory per task and lock
-meaningful criteria before implementation. Include relevant input and criterion
-files. Verify at task/feature boundaries and repair failures before advancing.
+For implementation or execution of a long implementation plan, read the installed
+DoneProof SKILL.md before editing product code. Follow its risk routing and
+acceptance workflow. Questions, read-only reviews, planning without execution and
+trivial prose edits do not need a contract unless requested.
 
-Only `pod.py finalize` returning `VERIFIED_SUCCESS` authorizes completion.
-For large plans, preserve the original plan and additions, cover every outcome,
-then perform and record a semantic audit tied to current proofs. `GATE_PASS` and
-`COVERAGE_COMPLETE` alone do not authorize a completion claim.
-
-Read-back must confirm mutations. Keep checks observational or isolated; do not
-repeat a production write to refresh evidence. Do not weaken tests after failure.
+Assign one coordinator to the overall contract when using subagents. Give each
+task a separate state directory; use isolated worktrees for overlapping edits.
+Report completion only with current VERIFIED_SUCCESS. Otherwise report progress
+and the actual blocker. Existing user authorization remains applicable.

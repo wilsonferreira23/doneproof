@@ -527,6 +527,14 @@ class Task:
             need(req['source'] in source, f"{req['id']}: source excerpt not found in preserved plan")
         for gid in self.gates:
             self.inputs(gid)
+            for check in self.gates[gid]['checks']:
+                if check['type'] == 'command':
+                    cwd = local_path(self.root, check.get('cwd', '.'))
+                    need(cwd.is_dir(), f"{gid}/{check['id']}: cwd directory missing: {cwd}; correct cwd before lock")
+            runtime = self.runtime(gid)
+            for cid, executable in runtime['executables'].items():
+                need(executable['path'] is not None,
+                     f'{gid}/{cid}: executable not found; install the executable or correct argv before lock; pass command arguments separately')
         self.state = {'schema_version': SCHEMA, 'binding': self.binding, 'snapshot': self.contract,
                       'contract_sha256': digest(self.contract), 'revision': 1, 'sequence': 0,
                       'extension_sequence': 0, 'plans': self.plans(), 'criteria': self.criteria(),
@@ -659,6 +667,18 @@ class Task:
         status = evaluate(target)
         for gid, value in memo.items():
             print(f'{value:7} {gid}')
+            if value != 'PASS':
+                path = self.folder / 'proofs' / (self.state['records'][gid]['proof'] + '.json')
+                proof = load(path)
+                print(f'Evidence: {path}')
+                if proof.get('reason'):
+                    print(redact(proof['reason']))
+                for check in proof['checks']:
+                    if check['status'] != 'PASS':
+                        print(redact(f"{check['id']}: {check['summary']}"))
+                        evidence = check.get('evidence', {})
+                        print(redact((evidence.get('stderr') or evidence.get('stdout') or '')[-1500:]))
+                print('Next: inspect the failed check and its working directory/test selection; repair the cause, then rerun verification. Do not weaken protected criteria.')
         return ('GATE_PASS', 0) if status == 'PASS' else ('GATE_FAILED', 1) if status == 'FAIL' else ('BLOCKED', 2)
 
     def finish(self, proof):
@@ -735,6 +755,28 @@ class Task:
         save(self.folder / 'completion.json', result)
         return 'VERIFIED_SUCCESS', 0
 
+    def complete(self, audit_path=None):
+        if audit_path is not None:
+            need(self.contract['kind'] == 'plan', '--audit applies only to plans; use finish without --audit for a task')
+            return self.finalize(audit_path)
+        status, code = self.verify(self.contract['final_gate'])
+        if code:
+            return status, code
+        if self.contract['kind'] == 'task':
+            return self.finalize()
+        report = self.coverage()
+        need(report['status'] == 'COVERAGE_COMPLETE', 'coverage incomplete; run coverage --summary and verify missing requirement gates before finish')
+        draft = {key: report[key] for key in ('schema_version', 'revision', 'contract_sha256', 'snapshot', 'plans_sha256')}
+        draft.update(plan_review='', gaps=[], requirements=[
+            {key: row[key] for key in ('id', 'source', 'proof')} | {'assessment': ''}
+            for row in report['requirements']])
+        path = self.folder / f"audit-draft-{report['snapshot']}.json"
+        need(not path.exists(), f'audit draft already exists: {path}; preserve its assessments')
+        save(path, draft)
+        print(f'Audit: {path}')
+        print('Next: review the preserved plan and proofs; fill assessments, gaps and plan_review, then finish CONTRACT --audit FILE. This second call does not rerun tests.')
+        return 'AUDIT_REQUIRED', 2
+
 
 def interrupted(signum, frame):
     raise KeyboardInterrupt
@@ -774,6 +816,8 @@ def initialize(args):
 def main():
     parser = argparse.ArgumentParser(description='DoneProof versioned completion verifier')
     parser.add_argument('--version', action='version', version=VERSION)
+    parser.add_argument('--identity', action='version', version=json.dumps({
+        'name': VERSION, 'schema_version': SCHEMA, 'engine_sha256': file_stamp(Path(__file__).resolve())['sha256']}))
     sub = parser.add_subparsers(dest='action', required=True)
     child = sub.add_parser('init', help='create and lock a light task from existing acceptance tests')
     child.add_argument('contract', type=Path)
@@ -782,13 +826,15 @@ def main():
     child.add_argument('--supersedes', type=Path, help='previous protected light-task contract; kept unchanged')
     child.add_argument('--reason', help='justification for replacing the previous light task')
     child.add_argument('--run', nargs=argparse.REMAINDER, required=True)
-    for name in ('lock', 'extend', 'verify', 'coverage', 'finalize'):
+    for name in ('lock', 'extend', 'verify', 'coverage', 'finalize', 'finish'):
         child = sub.add_parser(name)
         child.add_argument('contract', type=Path)
         if name == 'verify':
             child.add_argument('--gate', required=True)
-        if name == 'finalize':
+        if name in ('finalize', 'finish'):
             child.add_argument('--audit', type=Path)
+        if name == 'coverage':
+            child.add_argument('--summary', action='store_true')
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, interrupted)
     try:
@@ -804,19 +850,37 @@ def main():
                 status, code = task.verify(args.gate)
             elif args.action == 'coverage':
                 report = task.coverage()
+                if args.summary:
+                    print(f'Contract: {task.path}\nRoot: {task.root}\nRevision: {report["revision"]}')
+                    for row in report['requirements']:
+                        print(redact(f"{row['id']} {row['status']}: {row['text']} — {row.get('reason', row.get('proof', ''))}"))
+                    if report['final_reason']:
+                        print(redact('Final: ' + report['final_reason']))
+                    print(f'Evidence: {task.folder / "coverage.json"}')
                 status = f"{report['status']} coverage={report['coverage']}% requirements={report['verified']}/{report['total']}"
                 code = 0 if report['status'] == 'COVERAGE_COMPLETE' else 1
             elif args.action == 'finalize':
                 status, code = task.finalize(args.audit)
+            elif args.action == 'finish':
+                status, code = task.complete(args.audit)
             else:
                 status, code = getattr(task, args.action)()
             print(status)
+            if status == 'VERIFIED_SUCCESS':
+                print(f'Evidence: {task.folder / "completion.json"}')
             return code
     except KeyboardInterrupt:
         print('BLOCKED: interrupted; previous evidence cannot approve a started attempt')
         return 2
     except Exception as exc:
         print('BLOCKED: ' + redact(f'{type(exc).__name__}: {exc}'))
+        message = str(exc)
+        if 'audit' in message:
+            print('Next: preserve the existing audit. If evidence changed, run finish without --audit and review its new draft; otherwise correct the reported audit fields.')
+        elif 'protected' in message or 'after lock' in message:
+            print('Next: preserve the original criteria/history. For a confirmed criterion error, create corrected files and a new contract with supersedes and a specific reason; never weaken the locked test.')
+        else:
+            print('Next: correct the reported path, command or state issue. For an existing task inspect coverage CONTRACT --summary; never delete history to restore PASS.')
         return 2
 
 

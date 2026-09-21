@@ -113,16 +113,23 @@ to reuse a previous success. Separate contracts must use separate directories.
 | `verify --gate ID` | `GATE_PASS` | This gate and executed dependencies passed. |
 | `coverage` | `COVERAGE_COMPLETE coverage=100%` | Declared outcomes have coherent current proofs and final is current. |
 | `finalize [--audit FILE]` | `VERIFIED_SUCCESS` | Completion authorized for this evidence snapshot. |
+| `finish` | `VERIFIED_SUCCESS` or `AUDIT_REQUIRED` | Verify final, then finalize a task or prepare a plan audit. |
+| `finish --audit FILE` | `VERIFIED_SUCCESS` | Finalize a plan against existing proofs; never rerun checks. |
+| `coverage --summary` | Coverage plus readable reasons | Resume a task without changing proofs. |
 
 Exit 0 means command-local success, 1 failed check/incomplete coverage, 2 blocked
-or invalid operation. Completion requires `finalize` exit 0, not any exit 0.
+or invalid operation, including a plan awaiting audit. Completion requires
+`VERIFIED_SUCCESS` from finalization (directly or through `finish`), not any exit 0.
 No cached completion is an everlasting approval. Rerun validation after changes.
 
 ## Audit
 
-After final and coverage pass, read the original plan/additions and the proof
-files named by `coverage.json`. Write a separate audit JSON, copying the identity
-fields from coverage and supplying your actual semantic assessment:
+Run `finish` to verify and generate `audit-draft-<snapshot>.json` beside the
+contract. It fills identity fields and proof references, leaving assessments and
+plan_review empty. Read the original plan/additions and proofs, then supply actual
+semantic assessments and gaps. Submit with `finish --audit FILE`; this does not
+rerun checks. If evidence changed, obtain a new draft with `finish` and review it.
+Previous drafts are preserved. The format below also supports manual audit files:
 
 ```json
 {
@@ -150,6 +157,42 @@ of the audit record; it cannot determine the truth of the reviewer's prose.
 
 ## Light-task initializer
 
+Initial `lock` validates command executables and working directories before
+protecting criteria; it does not execute tests. Missing product inputs may be
+intentional before implementation and are tracked as absent. Protected criterion
+files must exist. `--identity` reports the engine hash and schema independently
+of the DoneProof display name.
+
 `init CONTRACT --input PATH --criterion PATH --run COMMAND...` creates and locks a light task in the current project. Repeat input/criterion flags before --run. Acceptance files must already exist; the contract must not exist. The task ID is its parent directory name. Use `.proof-of-done/<task-id>/contract.json`. The generated gate ID is `final`, with behavior purpose and isolated-test effect. Review command effects as usual. Product inputs, criterion hashes and all regular freshness checks are unchanged. Plans, standard/strict modes and HTTP/file checks use the full contract workflow.
+
+## Standard template
+
+For `.proof-of-done/<task-id>/contract.json`, adapt these paths and commands to
+real behavioral and integration assertions. IDs and root are mechanical defaults;
+scope, acceptance and commands require project knowledge. Add strict negative
+and mapped readback checks using the strict example when relevant.
+
+```json
+{
+  "schema_version": 3, "task_id": "feature", "root": "../..",
+  "kind": "task", "mode": "standard", "final_gate": "final",
+  "gates": [{
+    "id": "final", "level": "feature",
+    "inputs": ["src", "tests", "package.json"],
+    "criteria": ["acceptance.md"],
+    "checks": [
+      {"id": "behavior", "type": "command", "purpose": "behavior",
+       "effect": "isolated_test", "argv": ["npm", "run", "test:unit"], "expect_exit": 0},
+      {"id": "integration", "type": "command", "purpose": "integration",
+       "effect": "isolated_test", "argv": ["npm", "run", "test:integration"], "expect_exit": 0}
+    ]
+  }]
+}
+```
+
+The protected acceptance file must specify observable outcomes and test selection;
+an arbitrary prose file does not make an unrelated command meaningful. Keep
+generated outputs outside inputs. This is the existing schema, not an additional
+configuration format.
 
 For a justified correction to a light task's criteria, preserve the old criterion file and use a new filename and task directory. Add `--supersedes OLD_CONTRACT --reason 'specific correction'` before `--run`. The previous task must be locked, light, in the same project, and retain its protected contract and criteria. The initializer records its identity and contract hash without modifying its history. The new task starts without usable proofs and needs its own verification and finalization. This shortcut cannot replace standard/strict tasks or plans.
