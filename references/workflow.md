@@ -2,7 +2,7 @@
 
 ## Prepare
 
-Use the risk routing in [SKILL.md](../SKILL.md). Create a contract in
+Apply the acceptance, evidence and risk guidance in [SKILL.md](../SKILL.md). Create a contract in
 `.proof-of-done/<task-id>/contract.json`, with `root: ../..`. Adapt the
 [standard template](contract.md#standard-template), [artifact example](../examples/basic/.proof-of-done/contract.json)
 or [strict plan example](../examples/strict/.proof-of-done/contract.json).
@@ -47,7 +47,7 @@ Tasks finalize after passing verification. Plans return `AUDIT_REQUIRED` (exit 2
 and the path to `audit-draft-<snapshot>.json`, with identity fields filled and
 assessments blank. This expected pending state is not a test failure or approval.
 
-Compare the preserved plan and additions with implemented behavior, requirements
+Compare the original request, preserved plan and additions with implemented behavior, requirements
 and referenced proofs. Fill every `assessment`, the whole `plan_review`, and
 `gaps` honestly. Coverage only proves the explicitly declared mapping. The CLI
 cannot determine whether a reviewer's prose is true. Finalize that snapshot:
