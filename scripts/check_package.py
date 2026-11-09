@@ -51,9 +51,23 @@ def main():
                 call(root, 'verify', '--gate', 'readback', success=False)
                 call(root, 'finalize', *args, success=False)
             elif name == 'code':
-                (root / 'app.py').write_text('def greet(name):\n    return "wrong"\n')
+                path = root / 'app.py'
+                original = path.read_text()
+                path.write_text('def greet(name):\n    return "wrong"\n')
                 call(root, 'verify', '--gate', 'greeting', success=False)
                 call(root, 'finalize', success=False)
+                for broken in (original.replace('name = name.strip()', 'name = name'),
+                               original.replace('if not name:', 'if False:')):
+                    path.write_text(broken)
+                    for script, expected_exit in (('acceptance.py', 0), ('regression.py', 1)):
+                        result = subprocess.run([sys.executable, script], cwd=root,
+                                                capture_output=True, text=True, timeout=30)
+                        assert result.returncode == expected_exit, result.stdout + result.stderr
+                    call(root, 'finish', success=False)
+                    call(root, 'finalize', success=False)
+                path.write_text(original)
+                assert 'VERIFIED_SUCCESS' in call(root, 'finish')
+                print('code: acceptance passed while each preserved-behavior regression blocked completion')
             else:
                 (root / 'result.txt').write_text('broken')
                 call(root, 'verify', '--gate', contract['final_gate'], success=False)

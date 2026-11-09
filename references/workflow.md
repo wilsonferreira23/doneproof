@@ -14,10 +14,27 @@ can remain editable product inputs, with a separate protected acceptance file.
 Git diffs help inspect changes but do not enumerate every dependency. Checks must
 not write into their input inventory; use temporary fixtures outside it.
 
+Apply the affected-flow impact map from SKILL.md before locking. Put selected
+regression commands in final or its dependency gates, alongside acceptance;
+include their source, tests, fixtures and configuration in the input inventory.
+Use existing schema purposes: regression checks usually have `purpose: behavior`,
+or `integration`, `negative` or `readback` when those assertions actually apply.
+There is no `regression` purpose. One command may cover acceptance and regressions
+if its real assertions cover both; purpose labels alone do not establish coverage.
+
+For standard work, exercise the affected caller/provider or component interaction
+and existing consumer contracts. For strict work, also cover applicable permission
+boundaries, invalid states and data invariants, and retry/idempotency or recovery
+behavior when the change can affect them. Prefer isolated integration tests;
+use end-to-end checks when lower-level tests cannot prove the affected flow.
+Broaden suites based on actual impact, not an arbitrary test count.
+
 For a plan, preserve the original unchanged, set `kind: plan`, and map every
 required outcome to its literal source excerpt and a proof gate. Administrative
 steps do not need artificial tests. Preserve authorized additions in separate
 `plan_additions` files. Choose the mode by risk, independently of plan length.
+Record regression safety criteria separately from literal plan excerpts; do not
+invent user requirements or rewrite the preserved plan to justify test coverage.
 
 Lock before editing:
 
@@ -48,7 +65,8 @@ and the path to `audit-draft-<snapshot>.json`, with identity fields filled and
 assessments blank. This expected pending state is not a test failure or approval.
 
 Compare the original request, preserved plan and additions with implemented behavior, requirements
-and referenced proofs. Fill every `assessment`, the whole `plan_review`, and
+and referenced proofs, including affected-flow regression results and unresolved
+baseline or environment limits. Fill every `assessment`, the whole `plan_review`, and
 `gaps` honestly. Coverage only proves the explicitly declared mapping. The CLI
 cannot determine whether a reviewer's prose is true. Finalize that snapshot:
 

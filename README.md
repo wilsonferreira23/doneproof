@@ -4,6 +4,13 @@ DoneProof checks declared acceptance evidence before a coding agent claims
 completion. The CLI stays in Python's standard library. It does not measure the
 semantic truth of arbitrary tests or the completeness of a natural-language plan.
 
+The skill automatically requires regression selection for affected flows:
+focused checks for local changes, relevant component/integration suites for
+boundary changes, and critical-flow checks for strict work. It reuses project
+tests, adds durable tests for meaningful coverage gaps, and includes the selected
+checks in final verification. The agent determines impact from the source and
+contracts; the CLI does not discover affected flows or test adequacy by itself.
+
 Read [SKILL.md](SKILL.md) for the agent workflow and
 [references/contract.md](references/contract.md) for the schema and audit format.
 
@@ -17,6 +24,9 @@ python3 scripts/check_package.py
 The runnable examples live in `examples/basic`, `examples/code` and `examples/strict`. Copy an
 example to a temporary project before executing it so the distributed examples
 remain clean. The package check does this automatically.
+The code example separates requested greeting behavior from regressions for
+whitespace handling and empty-name rejection. Its package check confirms that
+acceptance alone can pass while a regression prevents completion.
 
 Use `init` → native editing → `finish` for small changes. `finish` verifies the
 final gate and delegates completion to `finalize`. Plans first receive an audit

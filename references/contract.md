@@ -195,4 +195,12 @@ an arbitrary prose file does not make an unrelated command meaningful. Keep
 generated outputs outside inputs. This is the existing schema, not an additional
 configuration format.
 
+Include affected-flow regression selection in that protected acceptance file,
+using the impact map and risk routing in SKILL.md. Selected regression commands
+must run in final or its dependency closure. Reuse the existing check purposes
+according to their assertions; `regression` is not a schema purpose. The
+[light code example](../examples/code/.proof-of-done/contract.json) shows acceptance
+and regression commands in one gate. Test discovery and skipped-case inspection
+remain the agent's responsibility; an exit code alone does not prove coverage.
+
 For a justified correction to a light task's criteria, preserve the old criterion file and use a new filename and task directory. Add `--supersedes OLD_CONTRACT --reason 'specific correction'` before `--run`. The previous task must be locked, light, in the same project, and retain its protected contract and criteria. The initializer records its identity and contract hash without modifying its history. The new task starts without usable proofs and needs its own verification and finalization. This shortcut cannot replace standard/strict tasks or plans.

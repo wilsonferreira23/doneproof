@@ -13,7 +13,8 @@
         "app.py"
       ],
       "criteria": [
-        "acceptance.py"
+        "acceptance.py",
+        "regression.py"
       ],
       "checks": [
         {
@@ -26,7 +27,19 @@
             "acceptance.py"
           ],
           "expect_exit": 0,
-          "stdout_contains": "2 acceptance cases executed"
+          "stdout_contains": "1 acceptance case executed"
+        },
+        {
+          "id": "regression",
+          "type": "command",
+          "purpose": "behavior",
+          "effect": "isolated_test",
+          "argv": [
+            "python3",
+            "regression.py"
+          ],
+          "expect_exit": 0,
+          "stdout_contains": "2 regression cases executed"
         }
       ]
     }
