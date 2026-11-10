@@ -2,57 +2,79 @@
 
 # DoneProof
 
-### Give every “done” a proof you can inspect.
+### Know what was checked before you call it done.
 
-Acceptance criteria, affected-flow regressions, and verified completion for AI-assisted development.
+A Codex skill that helps your AI check the work it delivers.
 
 [![Checks](https://github.com/wilsonferreira23/doneproof/actions/workflows/tests.yml/badge.svg)](https://github.com/wilsonferreira23/doneproof/actions/workflows/tests.yml)
-![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20macOS-222222)
-![Runtime dependencies](https://img.shields.io/badge/Runtime-Python%20standard%20library-0F766E)
 
-[Get started](#get-started) · [See it in action](#a-fix-can-work-and-still-break-something) · [Read the workflow](SKILL.md)
+[Get started](#get-started) · [See an example](#a-simple-example) · [How it works](#how-it-works)
 
 </div>
 
 ---
 
-You ask an agent to fix a bug. It edits the code, runs a check, and says the work is complete. Your next question is whether the requested behavior works **and the surrounding flows still hold up**.
+You ask your AI to fix something. It changes the code and replies, **“Done.”**
 
-DoneProof gives that question a repeatable workflow. It helps the agent define success before editing, select regressions for the affected flows, and collect current evidence before claiming completion.
+But did it check what you asked for? Did the change break something that used to work?
 
-**The result is a completion decision backed by the criteria, commands, outputs, and file versions that produced it.**
+**DoneProof helps the AI answer those questions before finishing your request.** It guides the AI to write down what success means, make the change, check the affected parts, and show you the results.
 
-## What you get
+You describe the result you want. The agent handles the verification steps.
 
-| Capability | What it does for your work |
+## A simple example
+
+Imagine you ask:
+
+> After login, take users back to the page they wanted to open.
+
+The new redirect works. But a related change accidentally breaks password recovery.
+
+Checking only the redirect would miss that problem. DoneProof directs the agent to check the related behavior too:
+
+| What needs to work | Example result |
 | --- | --- |
-| **Protected acceptance criteria** | Records expected outcomes before implementation and detects changes to those criteria. |
-| **Automatic regression selection in the agent workflow** | Directs the agent to trace affected flows, reuse existing tests, and cover meaningful gaps. |
-| **Verification proportional to risk** | Keeps local edits focused and expands checks for integrations and critical behavior. |
-| **Evidence tied to the code** | Fingerprints declared source, tests, fixtures, and configuration so relevant changes invalidate prior proof. |
-| **Required tests actually executed** | Supported counted runners reject empty suites and skipped cases; required test IDs make omitted selections visible. |
-| **Rules linked to evidence** | Explicit obligations identify the check responsible for each declared rule. |
-| **A clear completion outcome** | Emits `VERIFIED_SUCCESS` after the declared final checks and completion requirements pass. |
-| **Reviewable implementation plans** | Maps plan requirements to proof gates and requires a semantic audit before finalizing a plan. |
+| Login returns the user to the requested page | Passed |
+| Incorrect passwords are still rejected | Passed |
+| Password recovery still works | Failed |
 
-## A fix can work and still break something
+**There is still work to do.** The agent should fix the failure or clearly report what remains unresolved.
 
-Imagine a greeting function that should return `Hello, Ada`. The new feature passes its acceptance test, but an edit accidentally removes whitespace normalization.
+Checking that existing behavior still works is called a **regression check**. DoneProof helps the agent choose these checks based on the parts the change can affect.
 
-```text
-Requested behavior      greet("Ada")     → "Hello, Ada"    PASS
-Existing behavior       greet(" Ada ")   → "Hello, Ada"    FAIL
-Completion                                                BLOCKED
-```
+This is an illustration. For a small runnable demonstration, the [greeting example](examples/code) shows a change that passes its new test but breaks existing behavior.
 
-The distributed code example exercises this exact situation. It also checks empty-name rejection. In each broken variant, acceptance can pass while the regression blocks completion. Restoring the behavior allows a fresh verified result. [Explore the runnable example](examples/code)
+## How it works
+
+1. **Understand the request.** Record what should work when the task is finished, including existing behavior that needs to keep working.
+2. **Make the changes.** Work on the relevant files, using focused checks along the way when helpful.
+3. **Check the delivery.** Run the checks selected for the affected parts. A higher-risk change needs stronger verification.
+4. **Show the outcome.** Explain what passed, what failed, and what could not be checked.
+
+The expected outcomes are protected before implementation, so making a failing check easier is not a valid way to finish. Results are also tied to the version of the code that was checked. Relevant changes can make an earlier result out of date.
+
+## Will it check every line and slow everything down?
+
+**Verification is organized around a request, module, or meaningful stage of work.** One request can involve many files and many edits inside the same verification cycle.
+
+The agent can run focused tests while working, then check the delivery when it is ready. The full test suite is used when the impact calls for it, rather than after every small edit.
+
+Previously passing local checks can be reused when the code and other relevant inputs still match. Checks affected by changes must run again. Observations of websites or saved state are refreshed because that state can change independently.
+
+| Your request | How much checking makes sense? |
+| --- | --- |
+| Correct a typo in a description | A focused review; no artificial tests. |
+| Change one calculation | Check the calculation and the nearby behavior it can affect. |
+| Connect two parts of an application | Check that they work together, including relevant failure cases. |
+| Change login, permissions, payments, or data deletion | Check allowed actions, rejected actions, and saved results where applicable. |
+
+A small edit can still carry high risk. What the change does matters more than how many lines it touches.
 
 ## Get started
 
-### 1. Install in Codex
+### 1. Install the skill
 
-Ask Codex to install the skill from this repository.
+Paste this into Codex:
 
 ```text
 Use $skill-installer to install the skill at the root of
@@ -60,45 +82,44 @@ https://github.com/wilsonferreira23/doneproof
 with the name doneproof.
 ```
 
-Requires **Python 3.10+** on Linux or macOS. The verifier uses Python's standard library. Your project's tests retain their own dependencies.
+The verifier requires Python 3.10+ on Linux or macOS. It uses Python's standard library; your project's tests may have their own requirements. Codex needs to discover the installed skill. [Skill installation documentation](https://learn.chatgpt.com/docs/build-skills)
 
-Use one discovered copy. Keep your existing installation location when updating. Personal installations may use `~/.codex/skills/doneproof` or `~/.agents/skills/doneproof`, depending on the host. Confirm discovery in your Codex environment. [Codex skill documentation](https://learn.chatgpt.com/docs/build-skills)
+### 2. Ask for your change
 
-### 2. Give it a real task
+You can speak normally. For example:
 
 ```text
 Use $doneproof to fix the redirect after login.
-Return the user to the requested page, preserve password recovery,
-and validate regressions in the affected authentication flows.
+Return users to the page they originally requested,
+and check that password recovery still works.
 ```
 
-Once selected, DoneProof directs the agent to choose and run relevant regressions automatically. Questions, read-only analysis, planning without execution, and trivial prose edits normally skip the workflow.
+You do not need to prepare terminal commands to use the skill. Once selected, it guides the agent to choose and run the relevant checks. Ordinary questions, research, and small prose edits normally do not need this workflow.
 
-### 3. Review the evidence
+### 3. Read the result
 
-The agent records the outcomes, runs the selected checks, and compares the results with your request. Successful completion requires a current `VERIFIED_SUCCESS`. Missing checks, unresolved failures, and evidence gaps belong in the result you review.
+Look for an explanation of:
 
-## How it works
+- What was changed.
+- What was actually checked.
+- Whether any relevant checks failed or could not run.
 
-```text
-Define success → Protect criteria → Implement → Verify + regressions → Review evidence
-                                                                           ↓
-                                                                   VERIFIED_SUCCESS
-```
+A successful verification produces `VERIFIED_SUCCESS`. That means the recorded requirements have current passing evidence. It does not mean every possible bug has been ruled out.
 
-The agent chooses checks from the request, source, dependencies, and existing harness. The Python CLI runs declared checks and tracks their freshness and dependencies. Saved implementation plans also require an audit against the preserved plan.
+## What makes the checks useful?
 
-| Mode | Use it for | Regression scope |
-| --- | --- | --- |
-| `light` | Small local changes | Changed behavior, nearby flows, and direct callers. |
-| `standard` | Features crossing an integration boundary | Relevant component suites, consumers, and failure paths. |
-| `strict` | Authentication, permissions, money, migrations, destructive operations | Affected critical flows, rejection cases, and persisted-state checks where applicable. |
+DoneProof helps keep the expected result stable while the code changes. It records which checks support each declared rule and whether those results still apply to the current code.
 
-Risk follows the behavior being changed. A one-line permission change can require strict verification.
+For supported test tools, it also rejects empty test runs, skipped tests in the selected run, and missing required test cases. More demanding tasks can include checks that deliberately exercise a failure or explore combinations of actions in a disposable test environment.
 
-**One verification cycle per delivery.** A request can involve many files and edits inside one contract. Use focused tests while implementing, then validate the affected flows together when the module or delivery is ready. Full-suite checks follow impact, rather than running after every small edit. If milestone checks remain current, `finish --reuse` avoids rerunning local evidence whose inputs, criteria, runtime and dependencies still match; HTTP and readback checks always refresh.
+The agent still needs to choose meaningful checks. A passing test that asks the wrong question cannot establish that your request was fulfilled. DoneProof supports that review; it does not replace it.
 
-### Prefer the CLI?
+## Want the technical details?
+
+The day-to-day instructions are in [SKILL.md](SKILL.md). The sections below are for people who want to run the verifier directly, maintain an installation, or understand its limits.
+
+<details>
+<summary><strong>Commands, verification modes, and examples</strong></summary>
 
 For a small task, prepare acceptance and regression assertions, then protect them before editing product code. Replace `<skill-dir>` with the installed skill's absolute path.
 
@@ -114,34 +135,27 @@ python3 <skill-dir>/scripts/pod.py finish .proof-of-done/my-task/contract.json
 
 The acceptance file must already exist and can run both acceptance and selected regression checks. Repeat `--input` and `--criterion` before `--run` to cover relevant files. `init` creates a light contract. Standard, strict, and plan workflows use the full contract format. [Contract reference](references/contract.md) · [Extended workflow](references/workflow.md)
 
-### Stronger evidence where the risk warrants it
+For previously verified local work, `finish <contract> --reuse` reuses evidence only while its declared inputs, criteria, runtime, and dependencies still match. HTTP and readback checks always refresh. Other commands observing mutable external state need a fresh `finish` or an appropriate readback check.
 
-For supported commands, counted verification records executed tests and rejects empty or skipped selections. Explicit obligations link rules to their checks. Critical flows can add targeted negative controls, property tests or bounded state sequences in isolated fixtures. Each check can declare its evidence method and scope; a test result remains a test result, and a proof of a separate model remains scoped to that model. [Evidence and controls](references/evidence.md)
+The modes are `light` for local behavior changes, `standard` for work crossing an integration boundary, and `strict` for critical changes such as permissions or money. [Full workflow](references/workflow.md)
 
-## Try the examples
+Counted execution supports unittest and Bun. Required case IDs currently use verbose unittest output. Other harnesses and custom scripts need explicit assertions or adapters for execution and outcomes. Obligation mappings and evidence methods are described in [Evidence and controls](references/evidence.md). A declared evidence label does not turn a test into a mathematical proof.
 
-From a checkout of this repository, run the package check. It copies examples into temporary directories and exercises successful completion, intentional failures, and recovery.
+Try the distributed examples in disposable copies:
 
 ```sh
 python3 scripts/check_package.py
 ```
 
-| Example | What it demonstrates |
-| --- | --- |
-| [Basic](examples/basic) | A declared artifact and a failing control. |
-| [Counted](examples/counted) | Required test IDs, nonempty execution, linked obligations, and preserved-input regressions. |
-| [Code](examples/code) | Acceptance plus preserved-behavior regressions. |
-| [Strict plan](examples/strict) | Protected access, guest rejection, saved-state readback, and a plan audit. |
+Examples: [basic artifact](examples/basic), [acceptance and regressions](examples/code), [required tests and rules](examples/counted), [strict implementation plan](examples/strict).
 
-To run the verifier's own test suite as well, use `python3 -m unittest discover -s tests -v`. CI runs checks on Linux and macOS with Python 3.10, 3.11, and 3.14. [View CI results](https://github.com/wilsonferreira23/doneproof/actions)
+To run the verifier's own tests, use `python3 -m unittest discover -s tests -v`. GitHub checks Linux and macOS with Python 3.10, 3.11, and 3.14. [See CI results](https://github.com/wilsonferreira23/doneproof/actions)
 
-## What a verified result covers
+The [evaluation protocol](references/evaluation.md) describes how to measure quality and added cost. [Historical validation](references/validation.md) applies only to its recorded runs; no fixed speed improvement is promised.
 
-`VERIFIED_SUCCESS` covers declared criteria and the current evidence snapshot. The agent remains responsible for selecting meaningful tests, identifying affected flows, and reviewing whether tests satisfy the request. The CLI verifies declared evidence, supported execution counts, obligation mappings and freshness. These checks do not determine whether arbitrary assertions express the right requirement.
+Verification commands must observe state or use isolated fixtures. Relevant source, tests, fixtures, and configuration must be included in the recorded inputs. Keep production writes and permanent services outside verification commands. The host controls when the skill is selected.
 
-Input inventories must include relevant source, tests, fixtures, and configuration. Hashes detect changes to declared files. HTTP checks observe external state at the recorded time. Verification commands must be observational or use isolated fixtures. Keep production writes and permanent services outside verification commands.
-
-DoneProof is an instruction-based agent workflow. The host decides when the skill is selected. Its benchmark protocol describes how to measure completion quality, false blocks, and token costs. Historical pilot results remain scoped to the runs they describe. [Evaluation protocol](references/evaluation.md) · [Historical validation](references/validation.md)
+</details>
 
 <details>
 <summary><strong>Installation, updates, and rollback</strong></summary>
