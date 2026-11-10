@@ -204,3 +204,40 @@ and regression commands in one gate. Test discovery and skipped-case inspection
 remain the agent's responsibility; an exit code alone does not prove coverage.
 
 For a justified correction to a light task's criteria, preserve the old criterion file and use a new filename and task directory. Add `--supersedes OLD_CONTRACT --reason 'specific correction'` before `--run`. The previous task must be locked, light, in the same project, and retain its protected contract and criteria. The initializer records its identity and contract hash without modifying its history. The new task starts without usable proofs and needs its own verification and finalization. This shortcut cannot replace standard/strict tasks or plans.
+
+## Delivery evidence extensions
+
+One contract covers a coherent request/module or meaningful stage. See
+[evidence and controls](evidence.md) for counted commands, protected obligation
+mappings, method/scope declarations and proportional negative/property checks.
+These optional extensions retain schema 3 compatibility with old contracts; old
+engines reject contracts containing the new fields. Engine changes invalidate
+prior proofs, which must be refreshed before reuse.
+
+- Contract `obligations`: list of `{id, text, gate, check}`. IDs are unique; each
+  mapping references a real check and needs current PASS evidence. `extend` can
+  add obligations but cannot edit/remove old ones. Additions invalidate their
+  gates and final. Requirements percentage and obligation counts are reported
+  separately; neither establishes semantic completeness.
+- Command `runner`: `unittest` or `bun`. Native `python* -m unittest` and
+  `bun test` argv are also recognized automatically in all contracts.
+  `min_tests` is a positive integer, default 1. `required_tests` is a nonempty
+  unique list of verbose unittest IDs. Successful counted runs require exit 0,
+  an unambiguous successful summary, sufficient tests, no skips/expected failures,
+  and all mandatory IDs. Unsupported harnesses retain ordinary command checks;
+  their actual execution needs an explicit protected assertion/adapter.
+- Non-HTTP check `method`: `example` (default), `property`, `bounded`, `model`,
+  `formal`. `scope` is nonempty text and mandatory for the last three. HTTP
+  retains its GET/HEAD `method`; its evidence classification is `example`.
+  These labels describe declared evidence and cannot certify their own truth.
+- Proofs store method, scope and counted test receipts; coverage/completion
+  includes evidence summaries and obligation-to-check outcomes.
+
+`finish CONTRACT --reuse` visits dependencies, reuses only valid local gate
+proofs and runs missing/stale/failed gates plus affected descendants. Runtime,
+criteria, inputs and dependency identity still have to match. HTTP and readback
+gates always rerun, invalidating their descendants. Commands observing other
+mutable external state require a fresh `finish` or a readback-purpose check;
+local hashes cannot capture such state. Default `finish` remains a fresh run.
+`--reuse` cannot combine with `--audit`; reviewed audit finalization already
+performs freshness checks without executing tests.

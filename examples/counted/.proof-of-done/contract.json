@@ -1,0 +1,61 @@
+{
+  "schema_version": 3,
+  "task_id": "addition",
+  "root": "..",
+  "kind": "task",
+  "mode": "light",
+  "final_gate": "final",
+  "obligations": [
+    {
+      "id": "R1",
+      "text": "Integer addition preserves the selected positive and negative cases",
+      "gate": "final",
+      "check": "addition-tests"
+    },
+    {
+      "id": "R2",
+      "text": "List addition returns combined values without mutating its operands",
+      "gate": "final",
+      "check": "addition-tests"
+    }
+  ],
+  "gates": [
+    {
+      "id": "final",
+      "level": "task",
+      "inputs": [
+        "app.py",
+        "tests"
+      ],
+      "criteria": [
+        "acceptance.md"
+      ],
+      "checks": [
+        {
+          "id": "addition-tests",
+          "type": "command",
+          "purpose": "behavior",
+          "method": "example",
+          "scope": "Selected integer addition and operand-preservation regressions",
+          "effect": "isolated_test",
+          "argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-v"
+          ],
+          "expect_exit": 0,
+          "runner": "unittest",
+          "min_tests": 2,
+          "required_tests": [
+            "test_math.MathTests.test_add",
+            "test_math.MathTests.test_preserves_inputs"
+          ]
+        }
+      ]
+    }
+  ]
+}

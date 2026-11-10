@@ -111,7 +111,7 @@ def exclusive(folder):
 
 
 def validate(contract):
-    object_fields(contract, 'schema_version task_id root kind mode gates final_gate requirements plan_path plan_additions mutations supersedes'.split(),
+    object_fields(contract, 'schema_version task_id root kind mode gates final_gate requirements plan_path plan_additions mutations supersedes obligations'.split(),
                   'schema_version task_id root kind mode gates final_gate'.split(), 'contract')
     need(type(contract['schema_version']) is int and contract['schema_version'] == SCHEMA,
          'schema_version must be 3; create a new task for 2.2 migration')
@@ -204,18 +204,33 @@ def validate(contract):
         need(text(mutation['outcome']) and mutation['gate'] in by_id, 'mutation needs outcome and gate')
         checks = by_id[mutation['gate']]['checks']
         need(any(c['id'] == mutation['check'] and c['purpose'] == 'readback' for c in checks), 'mutation requires an explicit readback check')
+    obligations = contract.get('obligations', [])
+    need(isinstance(obligations, list), 'obligations must be a list')
+    seen = set()
+    for item in obligations:
+        object_fields(item, ['id', 'text', 'gate', 'check'], ['id', 'text', 'gate', 'check'], 'obligation')
+        ident(item['id'], 'obligation')
+        need(item['id'] not in seen and text(item['text']), 'duplicate or empty obligation')
+        seen.add(item['id'])
+        need(item['gate'] in by_id and any(c['id'] == item['check'] for c in by_id[item['gate']]['checks']), 'obligation needs an existing gate/check')
     return by_id
 
 
 def validate_check(check, gate):
-    common = 'id type purpose timeout max_bytes'.split()
-    fields = {'command': 'argv expect_exit stdout_contains cwd effect env_from',
+    common = 'id type purpose timeout max_bytes method scope'.split()
+    fields = {'command': 'argv expect_exit stdout_contains cwd effect env_from runner min_tests required_tests',
               'file': 'path exists contains equals sha256',
               'http': 'url method headers headers_env expect_status expect_headers response_contains'}
     need(isinstance(check, dict) and check.get('type') in fields, 'unsupported check type')
     kind = check['type']
     object_fields(check, common + fields[kind].split(), ['id', 'type', 'purpose'], 'check')
     ident(check['id'], 'check')
+    method = check.get('method', 'example') if kind != 'http' else 'example'
+    if kind != 'http':
+        need(method in ('example', 'property', 'bounded', 'model', 'formal'), 'invalid evidence method')
+        need(method not in ('bounded', 'model', 'formal') or text(check.get('scope')), 'evidence method requires explicit scope')
+    if 'scope' in check:
+        need(text(check['scope']), 'scope must be nonempty text')
     need(check['purpose'] in ('behavior', 'integration', 'negative', 'readback'), 'invalid proof purpose')
     for key in ('timeout', 'max_bytes'):
         value = check.get(key, 120 if key == 'timeout' else MAX_OUTPUT)
@@ -232,6 +247,15 @@ def validate_check(check, gate):
         need(isinstance(check.get('argv'), list) and check['argv'] and all(text(x) for x in check['argv']), 'command needs argv')
         need(type(check.get('expect_exit')) is int, 'command needs integer expect_exit')
         need(check.get('effect') in ('observe', 'isolated_test'), 'command effect must be observe or isolated_test')
+        runner = check.get('runner') or (detected_runner(check['argv']) if check.get('expect_exit') == 0 else None)
+        need('runner' not in check or check['runner'] in ('unittest', 'bun'), 'unsupported counted runner')
+        if runner:
+            need(check['expect_exit'] == 0, 'counted tests require expect_exit 0; use a separate negative control')
+        if 'min_tests' in check:
+            need(runner and type(check['min_tests']) is int and check['min_tests'] >= 1, 'min_tests requires a counted runner and positive integer')
+        if 'required_tests' in check:
+            names(check['required_tests'], 'required_tests', nonempty=True)
+            need(runner == 'unittest', 'required_tests currently requires verbose unittest IDs')
         inline = len(check['argv']) > 2 and check['argv'][1] == '-c' and Path(check['argv'][0]).name.startswith('python')
         need(gate['criteria'] or inline, 'external test commands require protected criteria files')
     elif kind == 'file':
@@ -317,6 +341,38 @@ def observed(status, summary, evidence):
     return {'status': status, 'summary': summary, 'evidence': evidence}
 
 
+def detected_runner(argv):
+    if len(argv) >= 3 and Path(argv[0]).name.startswith('python') and argv[1:3] == ['-m', 'unittest']:
+        return 'unittest'
+    if len(argv) >= 2 and Path(argv[0]).name == 'bun' and argv[1] == 'test':
+        return 'bun'
+    return None
+
+
+def test_receipt(check, output):
+    runner = check.get('runner') or (detected_runner(check['argv']) if check.get('expect_exit') == 0 else None)
+    if not runner:
+        return None
+    if runner == 'unittest':
+        counts = re.findall(r'^Ran (\d+) tests? in [^\n]+$', output, re.M)
+        summaries = re.findall(r'^(?:OK(?: [^\n]*)?|FAILED(?: [^\n]*)?)$', output, re.M)
+        need(len(counts) == 1 and summaries == ['OK'], 'missing/ambiguous test summary or skipped/expected-failure tests')
+        total = int(counts[0])
+        ids = re.findall(r'^\S+ \(([^()\n]+)\)(?= \.\.\. |$)', output, re.M)
+        need(not check.get('required_tests') or len(ids) == total and len(set(ids)) == total,
+             'required_tests needs one unique verbose result per test')
+    else:
+        passed = re.findall(r'^\s*(\d+) pass\s*$', output, re.M)
+        failed = re.findall(r'^\s*(\d+) fail\s*$', output, re.M)
+        skipped = re.findall(r'^\s*(\d+) (?:skip|todo)\s*$', output, re.M)
+        need(len(passed) == 1 and failed == ['0'] and not any(int(n) for n in skipped), 'missing/ambiguous Bun summary or failed/skipped tests')
+        total, ids = int(passed[0]), []
+    need(total >= check.get('min_tests', 1), 'too few executed tests (zero tests cannot pass)')
+    need(set(check.get('required_tests', [])) <= set(ids), 'mandatory test IDs were not executed')
+    return {'runner': runner, 'executed': total, 'passed_ids': ids,
+            'required_tests': check.get('required_tests', []), 'skipped': 0}
+
+
 def command_check(check, root):
     cwd = local_path(root, check.get('cwd', '.'))
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
@@ -372,6 +428,12 @@ def command_check(check, root):
             return observed('FAIL', f'exit {proc.returncode}, expected {check["expect_exit"]}', evidence)
         if 'stdout_contains' in check and check['stdout_contains'] not in output['stdout']:
             return observed('FAIL', 'stdout expectation not met', evidence)
+        try:
+            receipt = test_receipt(check, output['stdout'] + '\n' + output['stderr'])
+            if receipt:
+                evidence['tests'] = receipt
+        except Blocked as exc:
+            return observed('FAIL', str(exc), evidence)
         return observed('PASS', f'exit {proc.returncode}', evidence)
 
 
@@ -561,12 +623,12 @@ class Task:
         self.load_state(extending=True)
         old = self.state['snapshot']
         for key in set(old) | set(self.contract):
-            if key not in ('gates', 'requirements', 'mode', 'plan_additions'):
+            if key not in ('gates', 'requirements', 'mode', 'plan_additions', 'obligations'):
                 need(old.get(key) == self.contract.get(key), f'{key} cannot change during extension')
         need(list(LIMITS).index(self.contract['mode']) >= list(LIMITS).index(old['mode']), 'mode cannot be weakened')
         changed = set()
         additions = 0
-        for key in ('gates', 'requirements'):
+        for key in ('gates', 'requirements', 'obligations'):
             before = {x['id']: x for x in old.get(key, [])}
             after = {x['id']: x for x in self.contract.get(key, [])}
             need(all(after.get(k) == v for k, v in before.items()), f'existing {key} cannot be changed or removed')
@@ -613,16 +675,33 @@ class Task:
         visiting.remove(gid)
         return proof
 
-    def verify(self, target):
+    def verify(self, target, reuse=False):
         need(target in self.gates, 'known --gate is required')
         self.load_state()
-        self.invalidate(target)
+        self.invalidate_completion()
+        if not reuse:
+            self.invalidate(target)
         self.persist()
         memo = {}
 
         def evaluate(gid):
             if gid in memo:
                 return memo[gid]
+            if reuse:
+                for dep in self.gates[gid].get('depends_on', []):
+                    evaluate(dep)
+                try:
+                    need(not any(c['type'] == 'http' or c['purpose'] == 'readback' for c in self.gates[gid]['checks']), 'refresh external observations/readback')
+                    current = self.valid(gid)
+                    if gid == self.contract['final_gate']:
+                        need(current['completed_sequence'] > self.state['extension_sequence'], 'final predates extension')
+                        for req in self.contract.get('requirements', []):
+                            need(current['completed_sequence'] >= self.valid(req['gate'])['completed_sequence'], 'final predates requirement')
+                    print(f'REUSED  {gid}')
+                    memo[gid] = 'PASS'
+                    return 'PASS'
+                except (Blocked, OSError, ValueError, TypeError, KeyError):
+                    pass
             self.invalidate(gid)
             self.state['sequence'] += 1
             attempt = f"{self.state['sequence']}-{gid}"
@@ -642,7 +721,7 @@ class Task:
                 proof['status'] = 'PASS'
                 for check in self.gates[gid]['checks']:
                     outcome = CHECKERS[check['type']](check, self.root)
-                    proof['checks'].append({'id': check['id'], 'purpose': check['purpose'], **outcome})
+                    proof['checks'].append({'id': check['id'], 'purpose': check['purpose'], 'method': check.get('method', 'example') if check['type'] != 'http' else 'example', 'scope': check.get('scope', 'Declared assertions only'), **outcome})
                     if outcome['status'] != 'PASS':
                         proof['status'] = outcome['status']
                         break
@@ -664,6 +743,14 @@ class Task:
             memo[gid] = proof['status']
             return proof['status']
 
+        def observes_external(gid):
+            return (any(c['type'] == 'http' or c['purpose'] == 'readback' for c in self.gates[gid]['checks'])
+                    or any(observes_external(dep) for dep in self.gates[gid].get('depends_on', [])))
+
+        if target == self.contract['final_gate']:
+            for requirement in self.contract.get('requirements', []):
+                if observes_external(requirement['gate']):
+                    evaluate(requirement['gate'])
         status = evaluate(target)
         for gid, value in memo.items():
             print(f'{value:7} {gid}')
@@ -717,13 +804,34 @@ class Task:
             need(all(g['id'] in closure for g in self.gates.values() if any(c['type'] == 'http' for c in g['checks'])), 'HTTP observations must be dependencies of the final gate')
         except (Blocked, OSError, ValueError, TypeError, KeyError) as exc:
             final_reason = str(exc)
+        obligations, evidence = [], []
+        for item in self.contract.get('obligations', []):
+            row = dict(item, status='MISSING')
+            try:
+                proof = self.valid(item['gate'])
+                check = next(c for c in proof['checks'] if c['id'] == item['check'])
+                need(check['status'] == 'PASS', 'mapped check did not pass')
+                row.update(status='VERIFIED', proof=proof['id'], method=check.get('method', 'example'), scope=check.get('scope', 'Declared assertions only'))
+            except (Blocked, OSError, ValueError, TypeError, KeyError, StopIteration) as exc:
+                row['reason'] = str(exc)
+            obligations.append(row)
+        for gid in self.gates:
+            try:
+                proof = self.valid(gid)
+                for check in proof['checks']:
+                    evidence.append({'gate': gid, 'check': check['id'], 'method': check.get('method', 'example'),
+                                     'scope': check.get('scope', 'Declared assertions only'),
+                                     'tests': check.get('evidence', {}).get('tests')})
+            except (Blocked, OSError, ValueError, TypeError, KeyError):
+                pass
         covered = sum(row['status'] == 'VERIFIED' for row in matrix)
-        success = covered == len(matrix) and final_reason is None
+        success = covered == len(matrix) and final_reason is None and all(r['status'] == 'VERIFIED' for r in obligations)
         report = {'schema_version': SCHEMA, 'task_id': self.contract['task_id'], 'revision': self.state['revision'],
                   'contract_sha256': digest(self.contract), 'plans_sha256': digest(self.state['plans']),
                   'status': 'COVERAGE_COMPLETE' if success else 'INCOMPLETE_PLAN_COVERAGE',
                   'coverage': 100 * covered // len(matrix), 'verified': covered, 'total': len(matrix), 'requirements': matrix,
-                  'final_proof': final['id'] if final else None, 'final_reason': final_reason}
+                  'final_proof': final['id'] if final else None, 'final_reason': final_reason,
+                  'obligations': obligations, 'obligations_verified': sum(r['status'] == 'VERIFIED' for r in obligations), 'obligations_total': len(obligations), 'evidence': evidence, 'evidence_note': 'Methods and scope are declarations; semantic adequacy requires review. Coverage concerns declared outcomes only.'}
         report['snapshot'] = digest(report)
         save(self.folder / 'coverage.json', report)
         return report
@@ -755,11 +863,12 @@ class Task:
         save(self.folder / 'completion.json', result)
         return 'VERIFIED_SUCCESS', 0
 
-    def complete(self, audit_path=None):
+    def complete(self, audit_path=None, reuse=False):
         if audit_path is not None:
+            need(not reuse, '--reuse cannot be combined with --audit')
             need(self.contract['kind'] == 'plan', '--audit applies only to plans; use finish without --audit for a task')
             return self.finalize(audit_path)
-        status, code = self.verify(self.contract['final_gate'])
+        status, code = self.verify(self.contract['final_gate'], reuse=reuse)
         if code:
             return status, code
         if self.contract['kind'] == 'task':
@@ -833,6 +942,8 @@ def main():
             child.add_argument('--gate', required=True)
         if name in ('finalize', 'finish'):
             child.add_argument('--audit', type=Path)
+        if name == 'finish':
+            child.add_argument('--reuse', action='store_true', help='reuse current local evidence; external observations are refreshed')
         if name == 'coverage':
             child.add_argument('--summary', action='store_true')
     args = parser.parse_args()
@@ -854,15 +965,19 @@ def main():
                     print(f'Contract: {task.path}\nRoot: {task.root}\nRevision: {report["revision"]}')
                     for row in report['requirements']:
                         print(redact(f"{row['id']} {row['status']}: {row['text']} — {row.get('reason', row.get('proof', ''))}"))
+                    for row in report['obligations']:
+                        print(redact(f"Obligation {row['id']} {row['status']}: {row['text']}"))
+                    for row in report['evidence']:
+                        print(redact(f"Evidence {row['gate']}/{row['check']}: {row['method']} — {row['scope']}"))
                     if report['final_reason']:
                         print(redact('Final: ' + report['final_reason']))
                     print(f'Evidence: {task.folder / "coverage.json"}')
-                status = f"{report['status']} coverage={report['coverage']}% requirements={report['verified']}/{report['total']}"
+                status = f"{report['status']} coverage={report['coverage']}% requirements={report['verified']}/{report['total']} obligations={report['obligations_verified']}/{report['obligations_total']}"
                 code = 0 if report['status'] == 'COVERAGE_COMPLETE' else 1
             elif args.action == 'finalize':
                 status, code = task.finalize(args.audit)
             elif args.action == 'finish':
-                status, code = task.complete(args.audit)
+                status, code = task.complete(args.audit, reuse=args.reuse)
             else:
                 status, code = getattr(task, args.action)()
             print(status)

@@ -6,7 +6,7 @@ Apply the acceptance, evidence and risk guidance in [SKILL.md](../SKILL.md). Cre
 `.proof-of-done/<task-id>/contract.json`, with `root: ../..`. Adapt the
 [standard template](contract.md#standard-template), [artifact example](../examples/basic/.proof-of-done/contract.json)
 or [strict plan example](../examples/strict/.proof-of-done/contract.json).
-Read the [schema](contract.md) only for fields the chosen example does not cover.
+Read the [schema](contract.md) only for fields the chosen example does not cover. Keep one contract for the coherent request, module or deliverable stage; normal intermediate edits stay inside it. Do not split by line or function.
 
 Declare relevant source, test fixtures and configuration as inputs. Protected
 criteria express the agreed acceptance; ordinary tests that need implementation
@@ -27,7 +27,7 @@ and existing consumer contracts. For strict work, also cover applicable permissi
 boundaries, invalid states and data invariants, and retry/idempotency or recovery
 behavior when the change can affect them. Prefer isolated integration tests;
 use end-to-end checks when lower-level tests cannot prove the affected flow.
-Broaden suites based on actual impact, not an arbitrary test count.
+Broaden suites based on actual impact, not an arbitrary test count. Record each critical rule as an explicit obligation linked to the check that observes it; protected criteria state its premises, allowed/rejected behavior and selected assertions. Use counted runner checks for supported test commands so missing or skipped selected cases block. See [evidence and controls](evidence.md).
 
 For a plan, preserve the original unchanged, set `kind: plan`, and map every
 required outcome to its literal source excerpt and a proof gate. Administrative
@@ -44,13 +44,13 @@ python3 <skill-dir>/scripts/pod.py lock <contract>
 
 The initial lock checks command executables and working directories without
 executing tests. Then edit with native tools. Verify at meaningful milestones
-using `verify <contract> --gate <id>`. Final verification reruns its dependencies;
-avoid separately running those gates immediately before final merely as ritual.
-Requirements outside final's dependency graph must be verified before final.
+using `verify <contract> --gate <id>`. Do not verify after each edit. Default final verification reruns its dependencies. If milestone proofs remain current, use `finish <contract> --reuse` to validate and reuse local evidence, rerunning only stale/missing gates and affected dependents. HTTP and readback checks always obtain fresh observations. Avoid separately running all gates immediately before final as a ritual. Requirements outside final's dependency graph must be verified before final.
 
 Standard work requires a behavior check and final integration. Strict also
 requires a meaningful negative control: demonstrate rejection of a known wrong
-state in an isolated fixture. Purpose labels do not establish meaningful tests.
+state in an isolated fixture. For critical predicates, verify the test's sensitivity with a targeted broken variant when useful: establish the correct baseline, introduce the violation in a disposable copy and require the related assertion to fail for the intended reason. A missing executable, syntax error or timeout is not that evidence. Purpose labels do not establish meaningful tests.
+
+Add property or state-sequence tests when combinations, retries, invalidation or recovery create a real coverage gap. Bound generated exploration, retain seeds/counterexamples, and state its domain. Reuse existing harnesses and regressions; neither every task nor every predicate needs mutation testing. Tests of a separate model cover that model unless correspondence with the actual implementation is established.
 For mutations, map each persisted outcome to a `readback` check that independently
 reads and compares the saved state. Never replay production writes for evidence.
 
@@ -67,7 +67,7 @@ assessments blank. This expected pending state is not a test failure or approval
 Compare the original request, preserved plan and additions with implemented behavior, requirements
 and referenced proofs, including affected-flow regression results and unresolved
 baseline or environment limits. Fill every `assessment`, the whole `plan_review`, and
-`gaps` honestly. Coverage only proves the explicitly declared mapping. The CLI
+`gaps` honestly. Include each declared obligation and its observed check, evidence method and scope. Coverage only proves the explicitly declared mapping. The CLI
 cannot determine whether a reviewer's prose is true. Finalize that snapshot:
 
 ```sh

@@ -24,7 +24,7 @@ def main():
         for link in re.findall(r'\]\(([^)]+)\)', path.read_text()):
             if '://' not in link:
                 assert (path.parent / link.split('#')[0]).exists(), link
-    for name in ('basic', 'code', 'strict'):
+    for name in ('basic', 'code', 'strict', 'counted'):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / name
             shutil.copytree(ROOT / 'examples' / name, root)
@@ -68,6 +68,16 @@ def main():
                 path.write_text(original)
                 assert 'VERIFIED_SUCCESS' in call(root, 'finish')
                 print('code: acceptance passed while each preserved-behavior regression blocked completion')
+            elif name == 'counted':
+                assert 'REUSED' in call(root, 'finish', '--reuse')
+                source = root / 'app.py'
+                original = source.read_text()
+                source.write_text('def add(a, b):\n    return None\n')
+                call(root, 'finish', '--reuse', success=False)
+                source.write_text(original)
+                assert 'VERIFIED_SUCCESS' in call(root, 'finish', '--reuse')
+                report = json.loads((root / '.proof-of-done/completion.json').read_text())
+                assert report['obligations_verified'] == report['obligations_total'] == 2
             else:
                 (root / 'result.txt').write_text('broken')
                 call(root, 'verify', '--gate', contract['final_gate'], success=False)

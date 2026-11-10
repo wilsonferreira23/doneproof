@@ -31,6 +31,8 @@ DoneProof gives that question a repeatable workflow. It helps the agent define s
 | **Automatic regression selection in the agent workflow** | Directs the agent to trace affected flows, reuse existing tests, and cover meaningful gaps. |
 | **Verification proportional to risk** | Keeps local edits focused and expands checks for integrations and critical behavior. |
 | **Evidence tied to the code** | Fingerprints declared source, tests, fixtures, and configuration so relevant changes invalidate prior proof. |
+| **Required tests actually executed** | Supported counted runners reject empty suites and skipped cases; required test IDs make omitted selections visible. |
+| **Rules linked to evidence** | Explicit obligations identify the check responsible for each declared rule. |
 | **A clear completion outcome** | Emits `VERIFIED_SUCCESS` after the declared final checks and completion requirements pass. |
 | **Reviewable implementation plans** | Maps plan requirements to proof gates and requires a semantic audit before finalizing a plan. |
 
@@ -94,6 +96,8 @@ The agent chooses checks from the request, source, dependencies, and existing ha
 
 Risk follows the behavior being changed. A one-line permission change can require strict verification.
 
+**One verification cycle per delivery.** A request can involve many files and edits inside one contract. Use focused tests while implementing, then validate the affected flows together when the module or delivery is ready. Full-suite checks follow impact, rather than running after every small edit. If milestone checks remain current, `finish --reuse` avoids rerunning local evidence whose inputs, criteria, runtime and dependencies still match; HTTP and readback checks always refresh.
+
 ### Prefer the CLI?
 
 For a small task, prepare acceptance and regression assertions, then protect them before editing product code. Replace `<skill-dir>` with the installed skill's absolute path.
@@ -110,6 +114,10 @@ python3 <skill-dir>/scripts/pod.py finish .proof-of-done/my-task/contract.json
 
 The acceptance file must already exist and can run both acceptance and selected regression checks. Repeat `--input` and `--criterion` before `--run` to cover relevant files. `init` creates a light contract. Standard, strict, and plan workflows use the full contract format. [Contract reference](references/contract.md) · [Extended workflow](references/workflow.md)
 
+### Stronger evidence where the risk warrants it
+
+For supported commands, counted verification records executed tests and rejects empty or skipped selections. Explicit obligations link rules to their checks. Critical flows can add targeted negative controls, property tests or bounded state sequences in isolated fixtures. Each check can declare its evidence method and scope; a test result remains a test result, and a proof of a separate model remains scoped to that model. [Evidence and controls](references/evidence.md)
+
 ## Try the examples
 
 From a checkout of this repository, run the package check. It copies examples into temporary directories and exercises successful completion, intentional failures, and recovery.
@@ -121,6 +129,7 @@ python3 scripts/check_package.py
 | Example | What it demonstrates |
 | --- | --- |
 | [Basic](examples/basic) | A declared artifact and a failing control. |
+| [Counted](examples/counted) | Required test IDs, nonempty execution, linked obligations, and preserved-input regressions. |
 | [Code](examples/code) | Acceptance plus preserved-behavior regressions. |
 | [Strict plan](examples/strict) | Protected access, guest rejection, saved-state readback, and a plan audit. |
 
@@ -128,7 +137,7 @@ To run the verifier's own test suite as well, use `python3 -m unittest discover 
 
 ## What a verified result covers
 
-`VERIFIED_SUCCESS` covers declared criteria and the current evidence snapshot. The agent remains responsible for selecting meaningful tests, identifying affected flows, and reviewing whether tests satisfy the request. The CLI verifies declared evidence and its freshness.
+`VERIFIED_SUCCESS` covers declared criteria and the current evidence snapshot. The agent remains responsible for selecting meaningful tests, identifying affected flows, and reviewing whether tests satisfy the request. The CLI verifies declared evidence, supported execution counts, obligation mappings and freshness. These checks do not determine whether arbitrary assertions express the right requirement.
 
 Input inventories must include relevant source, tests, fixtures, and configuration. Hashes detect changes to declared files. HTTP checks observe external state at the recorded time. Verification commands must be observational or use isolated fixtures. Keep production writes and permanent services outside verification commands.
 
@@ -159,7 +168,7 @@ Supported platforms are Linux and macOS with Python 3.10+. Windows, symlink inpu
 <details>
 <summary><strong>Migration from schema 2.2</strong></summary>
 
-The current contract format is schema 3. Preserve schema 2.2 contracts, plans, ledgers, and history as historical records. Create a new contract in a separate task directory and run fresh proofs. Update integrations that treated any successful `verify` command as global completion.
+The current contract format is schema 3. Counted-runner, obligation and evidence-class fields are additive optional fields supported by this engine; older schema-3 engines reject them. Existing contracts without these fields retain their command semantics. Update the engine before using the new fields. Preserve schema 2.2 contracts, plans, ledgers, and history as historical records. Create a new contract in a separate task directory and run fresh proofs. Update integrations that treated any successful `verify` command as global completion.
 
 Use `.proof-of-done/<task-id>/contract.json` with `root: ../..`. Paths resolve from the contract's project root, independently of the command's working directory. For a justified criterion replacement, create a successor task with `supersedes` and preserve the original history. Authorized additions to a plan use immutable `plan_additions` files.
 
