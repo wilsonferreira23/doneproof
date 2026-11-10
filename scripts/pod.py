@@ -358,7 +358,8 @@ def test_receipt(check, output):
         summaries = re.findall(r'^(?:OK(?: [^\n]*)?|FAILED(?: [^\n]*)?)$', output, re.M)
         need(len(counts) == 1 and summaries == ['OK'], 'missing/ambiguous test summary or skipped/expected-failure tests')
         total = int(counts[0])
-        ids = re.findall(r'^\S+ \(([^()\n]+)\)(?= \.\.\. |$)', output, re.M)
+        verbose = re.findall(r'^(\S+) \(([^()\n]+)\)(?= \.\.\. |$)', output, re.M)
+        ids = [name if name.endswith('.' + method) else name + '.' + method for method, name in verbose]
         need(not check.get('required_tests') or len(ids) == total and len(set(ids)) == total,
              'required_tests needs one unique verbose result per test')
     else:
